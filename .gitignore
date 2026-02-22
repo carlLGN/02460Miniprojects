@@ -1,2 +1,5 @@
 # virtual environments
 .venv
+Project1/src/models
+Project2/src/models
+Project3/src/models
