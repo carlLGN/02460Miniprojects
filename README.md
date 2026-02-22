@@ -4,8 +4,8 @@ Codebase for Miniprojects 1, 2 and 3 in course 02460 Advanced Machine Learning a
 ## UV as package manager
 Install guide (use standalone installer): https://docs.astral.sh/uv/getting-started/installation/
 
-Each project contains a UV project for the packages that are required for that specific project. To run any code in a project, simply `uv sync` with the individual project as your root.
+Each project contains a UV project for the packages that are required for that specific project. To run any code in a project, simply `uv sync --package <project1, project2, project3>` in the root or `uv sync --all-packages` to get all packages from all projects.
 
-Add a package via `uv add <package>`.
+Add a package via `uv add --package <project1, project2, project3> <package_name>`.
 
 Invoke a python file via `uv run python <file>.py`

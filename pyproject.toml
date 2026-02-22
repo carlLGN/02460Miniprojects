@@ -1,0 +1,8 @@
+[project]
+name = "02460_root"
+version = "0.1.0"
+description = "Root workspace for my Python projects"
+dependencies = [] # Keep this empty if the root has no code
+
+[tool.uv.workspace]
+members = ["Project1", "Project2", "Project3"]
