@@ -3,6 +3,7 @@
 # Inspiration is taken from:
 # - https://github.com/jmtomczak/intro_dgm/blob/main/vaes/vae_example.ipynb
 # - https://github.com/kampta/pytorch-distributions/blob/master/gaussian_vae.py
+# Updated by group 50 for 02460 mini-project 1 spring 2026.
 
 import torch
 import torch.nn as nn
@@ -11,9 +12,12 @@ import torch.utils.data
 from torch.nn import functional as F
 from tqdm import tqdm
 
-from Project1.src.encoder_decoder import GaussianEncoder, BernoulliDecoder
-from Project1.src.gaussian_prior import GaussianPrior
+from Project1.src.vae.encoder_decoder import GaussianEncoder, BernoulliDecoder
+from Project1.src.vae.prior_gaussian import GaussianPrior
 
+#TODO: hydra config til at definere prior
+#TODO: implementer Mixture of Gaussian prior (Skal den learnes or no? og ellers skal vi selv definere vores pi)
+#TODO: implementer flow-based prior
 
 
 class VAE(nn.Module):
