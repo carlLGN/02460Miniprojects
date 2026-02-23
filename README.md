@@ -8,6 +8,6 @@ Each project contains a UV project for the packages that are required for that s
 
 Add a package via `uv add --package <project1, project2, project3> <package_name>`.
 
-Invoke a python file via `uv run python <file>.py` (Not consistent with relative imports).
+Invoke a python file via `uv run python <file>.py`. (Not consistent with relative imports)
 
-Alternatively invoke a python file using 'uv run python -m <path>' (example: 'uv run python -m Project1.src.vae.vae').
+Alternatively invoke a python file using `uv run python -m <path>` (example: `uv run python -m Project1.src.vae.vae`).
