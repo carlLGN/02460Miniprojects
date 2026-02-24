@@ -14,6 +14,9 @@ from tqdm import tqdm
 
 from Project1.src.vae.encoder_decoder import GaussianEncoder, BernoulliDecoder
 from Project1.src.vae.prior_gaussian import GaussianPrior
+from Project1.src.vae.prior_MoG import MoGPrior
+
+import pdb
 
 #TODO: hydra config til at definere prior
 #TODO: implementer Mixture of Gaussian prior (Skal den learnes or no? og ellers skal vi selv definere vores pi)
@@ -52,7 +55,13 @@ class VAE(nn.Module):
         """
         q = self.encoder(x)
         z = q.rsample()
-        elbo = torch.mean(self.decoder(z).log_prob(x) - td.kl_divergence(q, self.prior()), dim=0)
+
+        # If kl_divergence cannot be calculated on closed form, use montecarlo to estimate
+        try:
+            elbo = torch.mean(self.decoder(z).log_prob(x) - td.kl_divergence(q, self.prior()), dim=0)
+        except NotImplementedError:
+            kl = (q.log_prob(z) - self.prior().log_prob(z)).mean(0)
+            elbo = torch.mean(self.decoder(z).log_prob(x) - kl, dim = 0)
         return elbo
 
     def sample(self, n_samples=1):
@@ -127,6 +136,7 @@ if __name__ == "__main__":
     parser.add_argument('--batch-size', type=int, default=32, metavar='N', help='batch size for training (default: %(default)s)')
     parser.add_argument('--epochs', type=int, default=10, metavar='N', help='number of epochs to train (default: %(default)s)')
     parser.add_argument('--latent-dim', type=int, default=32, metavar='N', help='dimension of latent variable (default: %(default)s)')
+    parser.add_argument('--prior', type=str, default='gaussian', help='prior for vae, choices are: gaussian, mix (default: %(default)s)')
 
     args = parser.parse_args()
     print('# Options')
@@ -146,7 +156,13 @@ if __name__ == "__main__":
 
     # Define prior distribution
     M = args.latent_dim
-    prior = GaussianPrior(M)
+
+    if args.prior == 'gaussian':
+        prior = GaussianPrior(M)
+    elif args.prior == 'mix':
+        prior = MoGPrior(M, K = 5)
+    else:
+        raise NotImplementedError('Prior does not exist')
 
     # Define encoder and decoder networks
     encoder_net = nn.Sequential(
