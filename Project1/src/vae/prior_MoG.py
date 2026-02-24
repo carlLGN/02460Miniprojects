@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch.distributions as td
 from torch.nn import functional as F
 
+import pdb
+
 
 class MoGPrior(nn.Module):
     def __init__(self, M, K):
@@ -20,8 +22,8 @@ class MoGPrior(nn.Module):
         self.K = K
 
         self.pi = nn.Parameter(torch.zeros(self.K), requires_grad=True) #TODO: Skal den learnes or no ?
-        self.mean = nn.Parameter(torch.zeros(self.M), requires_grad=True)
-        self.pre_stds = nn.Parameter(torch.ones(self.M), requires_grad=True)
+        self.mean = nn.Parameter(torch.zeros(self.K, self.M), requires_grad=True)
+        self.pre_stds = nn.Parameter(torch.ones(self.K, self.M), requires_grad=True)
 
     def forward(self):
         """
@@ -35,7 +37,6 @@ class MoGPrior(nn.Module):
         stds = F.softplus(self.pre_stds)
 
         component_dist = td.Independent(td.Normal(loc=self.mean, scale=stds), 1)
-
         return td.MixtureSameFamily(
                     mixture_distribution=pi_dist, 
                     component_distribution=component_dist
