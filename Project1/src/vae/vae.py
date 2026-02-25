@@ -15,12 +15,14 @@ from tqdm import tqdm
 from Project1.src.vae.encoder_decoder import GaussianEncoder, BernoulliDecoder
 from Project1.src.vae.prior_gaussian import GaussianPrior
 from Project1.src.vae.prior_MoG import MoGPrior
+from Project1.src.vae.prior_flow import FlowPrior
 
 import pdb
 
 #TODO: hydra config til at definere prior
-#TODO: implementer Mixture of Gaussian prior (Skal den learnes or no? og ellers skal vi selv definere vores pi)
-#TODO: implementer flow-based prior
+#TODO: Andre masking strategier i flow prior?
+#TODO: Sampling af flow prior kræver lidt anderledes kode
+#TODO: factor out z in flow prior?
 
 
 class VAE(nn.Module):
@@ -136,7 +138,7 @@ if __name__ == "__main__":
     parser.add_argument('--batch-size', type=int, default=32, metavar='N', help='batch size for training (default: %(default)s)')
     parser.add_argument('--epochs', type=int, default=10, metavar='N', help='number of epochs to train (default: %(default)s)')
     parser.add_argument('--latent-dim', type=int, default=32, metavar='N', help='dimension of latent variable (default: %(default)s)')
-    parser.add_argument('--prior', type=str, default='gaussian', help='prior for vae, choices are: gaussian, mix (default: %(default)s)')
+    parser.add_argument('--prior', type=str, default='gaussian', help='prior for vae, choices are: gaussian, mix, flow (default: %(default)s)')
 
     args = parser.parse_args()
     print('# Options')
@@ -161,6 +163,8 @@ if __name__ == "__main__":
         prior = GaussianPrior(M)
     elif args.prior == 'mix':
         prior = MoGPrior(M, K = 5)
+    elif args.prior == 'flow':
+        prior = FlowPrior(M, n_transformations=4)
     else:
         raise NotImplementedError('Prior does not exist')
 
