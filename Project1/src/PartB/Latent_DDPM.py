@@ -1,14 +1,17 @@
 # Code for DTU course 02460 (Advanced Machine Learning Spring) by Jes Frellsen, 2024
 # Version 1.0 (2024-02-11)
 
+from xml.parsers.expat import model
+
+from pyexpat import model
+
 import torch
 import torch.nn as nn
 import torch.distributions as td
 import torch.nn.functional as F
 from tqdm import tqdm
-from UnetClass import Unet 
 
-class DDPM(nn.Module):
+class Latent_DDPM(nn.Module):
     def __init__(self, network, beta_1=1e-4, beta_T=2e-2, T=100):
         """
         Initialize a DDPM model.
@@ -23,7 +26,7 @@ class DDPM(nn.Module):
         T: [int]
             The number of steps in the diffusion process.
         """
-        super(DDPM, self).__init__()
+        super(Latent_DDPM, self).__init__()
         self.network = network
         self.beta_1 = beta_1
         self.beta_T = beta_T
@@ -117,43 +120,33 @@ class DDPM(nn.Module):
         return self.negative_elbo(x).mean()
 
 
-def train(model, optimizer, data_loader, epochs, device):
-    """
-    Train a Flow model.
+def train_latent_ddpm(ddpm_latent, vae, optimizer, data_loader, epochs, device):
+    ddpm_latent.train()
+    vae.eval()
+    for p in vae.parameters():
+        p.requires_grad = False
 
-    Parameters:
-    model: [Flow]
-       The model to train.
-    optimizer: [torch.optim.Optimizer]
-         The optimizer to use for training.
-    data_loader: [torch.utils.data.DataLoader]
-            The data loader to use for training.
-    epochs: [int]
-        Number of epochs to train for.
-    device: [torch.device]
-        The device to use for training.
-    """
-    model.train()
-
-    total_steps = len(data_loader)*epochs
-    progress_bar = tqdm(range(total_steps), desc="Training")
+    total_steps = len(data_loader) * epochs
+    progress_bar = tqdm(range(total_steps), desc="Training latent DDPM")
 
     for epoch in range(epochs):
-        data_iter = iter(data_loader)
-        for x in data_iter:
-            if isinstance(x, (list, tuple)):
-                x = x[0]
-            x = x.to(device)
+        for batch in data_loader:
+            if isinstance(batch, (list, tuple)):
+                x = batch[0]
+            else:
+                x = batch
+            x = x.to(device)  # (B,1,28,28)
 
-            # For Unet defined above (expects flattened x)
-            x = x.view(x.size(0), -1)
+            # encode to latent (B,M)
+            with torch.no_grad():
+                q = vae.encoder(x)
+                z = q.rsample()           # or q.rsample()
 
             optimizer.zero_grad()
-            loss = model.loss(x)
+            loss = ddpm_latent.loss(z)
             loss.backward()
             optimizer.step()
 
-            # Update progress bar
             progress_bar.set_postfix(loss=f"⠀{loss.item():12.4f}", epoch=f"{epoch+1}/{epochs}")
             progress_bar.update()
 
@@ -199,65 +192,116 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('mode', type=str, default='train', choices=['train', 'sample', 'test'], help='what to do when running the script (default: %(default)s)')
     parser.add_argument('--data', type=str, default='tg', choices=['tg', 'cb', 'mnist'], help='dataset to use {tg: two Gaussians, cb: chequerboard} (default: %(default)s)')
-    parser.add_argument('--model', type=str, default='model.pt', help='file to save model to or load model from (default: %(default)s)')
-    parser.add_argument('--samples', type=str, default='samples.png', help='file to save samples in (default: %(default)s)')
+    parser.add_argument('--model', type=str, default='latent_ddpm_model.pt', help='file to save model to or load model from (default: %(default)s)')
+    parser.add_argument('--samples', type=str, default='latent_ddpm_samples.png', help='file to save samples in (default: %(default)s)')
     parser.add_argument('--device', type=str, default='cpu', choices=['cpu', 'cuda', 'mps'], help='torch device (default: %(default)s)')
     parser.add_argument('--batch-size', type=int, default=64, metavar='N', help='batch size for training (default: %(default)s)')
     parser.add_argument('--epochs', type=int, default=1, metavar='N', help='number of epochs to train (default: %(default)s)')
     parser.add_argument('--lr', type=float, default=1e-3, metavar='V', help='learning rate for training (default: %(default)s)')
     parser.add_argument('--T', type=int, default=1000)
     parser.add_argument('--n-samples', type=int, default=64)
+    parser.add_argument('--latent-dim', type=int, default=32)
+    parser.add_argument('--hidden', type=int, default=512)    
     args = parser.parse_args()
+
 
     print('# Options')
     for key, value in sorted(vars(args).items()):
         print(key, '=', value)
 
     device = torch.device(args.device)
+    M = args.latent_dim
 
-    # Standard MNIST (non-binarized)
+    # MNIST normalized to [-1,1]
     tfm = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.5,), (0.5,)),
     ])
-
     train_ds = datasets.MNIST(root="./data", train=True, download=True, transform=tfm)
-    test_ds  = datasets.MNIST(root="./data", train=False, download=True, transform=tfm)
+    train_loader = torch.utils.data.DataLoader(
+        train_ds, batch_size=args.batch_size, shuffle=True, num_workers=0
+    )
 
-    train_loader = torch.utils.data.DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=0)
-    test_loader  = torch.utils.data.DataLoader(test_ds,  batch_size=args.batch_size, shuffle=False, num_workers=0)
+    # ------------------------------------------------------------
+    # 1) Rebuild the SAME VAE architecture you trained (state_dict needs it)
+    # ------------------------------------------------------------
+    from Project1.src.PartB.GausEncoder_Decoder import GaussianEncoder, GaussianDecoder
+    from Project1.src.vae.prior_gaussian import GaussianPrior
+    from Project1.src.PartB.BetaVAE import Beta_VAE
 
-    # Unet 
-    network = FcNetwork()
+    prior = GaussianPrior(M)
 
-    model = DDPM(network, T=args.T).to(device)
+    encoder_net = nn.Sequential(
+        nn.Flatten(),
+        nn.Linear(784, 512),
+        nn.ReLU(),
+        nn.Linear(512, 512),
+        nn.ReLU(),
+        nn.Linear(512, M * 2),
+    )
 
-    # Choose mode to run
+    decoder_net = nn.Sequential(
+        nn.Linear(M, 512),
+        nn.ReLU(),
+        nn.Linear(512, 512),
+        nn.ReLU(),
+        nn.Linear(512, 784),
+        nn.Unflatten(-1, (28, 28)),
+    )
+
+    encoder = GaussianEncoder(encoder_net)
+    decoder = GaussianDecoder(decoder_net)
+
+    vae = Beta_VAE(prior, decoder, encoder).to(device)
+  
+  # ---- hardcode checkpoint path ----
+    VAE_CKPT_PATH = r"Project1/src/PartB/beta_VAE_model.pt"   # change to your actual path
+    state_dict = torch.load(VAE_CKPT_PATH, map_location=device)
+    vae.load_state_dict(state_dict)
+
+    vae.eval()
+    for p in vae.parameters():
+        p.requires_grad = False
+    print(f"Loaded VAE checkpoint from: {VAE_CKPT_PATH}")
+
+    # ------------------------------------------------------------
+    # 2) Build latent DDPM (input_dim must be M)
+    # ------------------------------------------------------------
+    network = FcNetwork(input_dim=M, num_hidden=args.hidden).to(device)
+    latent_model = Latent_DDPM(network, T=args.T).to(device)
+
+    # ------------------------------------------------------------
+    # 3) Train / Sample
+    # ------------------------------------------------------------
+    from pathlib import Path
+
+    save_dir = Path("Project1/src/PartB")
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+
+    model_path = save_dir / "latent_DDPM_model_1.pt"
+    sample_path = save_dir / "latent_ddpm_samples.png"
+
     if args.mode == 'train':
-        # Define optimizer
-        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+        optimizer = torch.optim.Adam(latent_model.parameters(), lr=args.lr)
 
-        # Train model
-        train(model, optimizer, train_loader, args.epochs, args.device)
+        train_latent_ddpm(latent_model, vae, optimizer, train_loader, args.epochs, device)
 
-        # Save model
-        torch.save(model.state_dict(), args.model)
+        torch.save(latent_model.state_dict(), model_path)
+        print("Saved latent DDPM to:", model_path)
 
     elif args.mode == 'sample':
-        model.load_state_dict(torch.load(args.model, map_location=device))
-        model.eval()
+        latent_model.load_state_dict(torch.load(model_path, map_location=device))
+        latent_model.eval()
 
         with torch.no_grad():
-            x = model.sample((args.n_samples, 28 * 28))        
-            x = x.view(args.n_samples, 1, 28, 28)               
-            x = (x + 1) / 2                                      
+            z = latent_model.sample((args.n_samples, M))
+            px = vae.decoder(z)
+            x = px.mean
+            x = x.unsqueeze(1)
+            x = (x + 1) / 2
             x = x.clamp(0, 1)
 
-        # 2x2 grid for 4 samples
-        if args.n_samples == 4:
-            nrow = 2
-        else:
-            nrow = int(args.n_samples ** 0.5)  
-
-        save_image(x, args.samples, nrow=nrow)
-        print("Saved samples to:", args.samples)
+        nrow = 2 if args.n_samples == 4 else int(args.n_samples ** 0.5)
+        save_image(x.cpu(), sample_path, nrow=nrow)
+        print("Saved samples to:", sample_path)
