@@ -123,6 +123,21 @@ def train(model, optimizer, data_loader, epochs, device):
             progress_bar.update()
 
 
+def test(model, data_loader, device, model_path):
+
+    model.eval()
+
+    state_dict = torch.load(model_path, map_location=torch.device(device))
+    model.load_state_dict(state_dict)
+
+    data_iter = iter(data_loader)
+    test_elbo = torch.ones(len(data_iter))*torch.inf
+    for k, x in enumerate(data_iter):
+        batch_elbo = model.elbo(x[0].to(device))
+        test_elbo[k] = batch_elbo
+    return torch.mean(test_elbo)
+
+
 if __name__ == "__main__":
     from torchvision import datasets, transforms
     from torchvision.utils import save_image, make_grid
@@ -131,7 +146,7 @@ if __name__ == "__main__":
     # Parse arguments
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('mode', type=str, default='train', choices=['train', 'sample'], help='what to do when running the script (default: %(default)s)')
+    parser.add_argument('mode', type=str, default='train', choices=['train', 'sample', 'test'], help='what to do when running the script (default: %(default)s)')
     parser.add_argument('--model', type=str, default='model.pt', help='file to save model to or load model from (default: %(default)s)')
     parser.add_argument('--samples', type=str, default='samples.png', help='file to save samples in (default: %(default)s)')
     parser.add_argument('--device', type=str, default='cpu', choices=['cpu', 'cuda', 'mps'], help='torch device (default: %(default)s)')
@@ -155,6 +170,11 @@ if __name__ == "__main__":
     mnist_test_loader = torch.utils.data.DataLoader(datasets.MNIST('data/', train=False, download=True,
                                                                 transform=transforms.Compose([transforms.ToTensor(), transforms.Lambda(lambda x: (thresshold < x).float().squeeze())])),
                                                     batch_size=args.batch_size, shuffle=True)
+    
+
+    train_subset, val_subset = torch.utils.data.random_split(mnist_train_loader, [0.9, 0.1])
+    train_loader = torch.utils.data.DataLoader(train_subset, batch_size=args.batch_size, shuffle=True)
+    val_loader = torch.utils.data.DataLoader(val_subset, batch_size=args.batch_size, shuffle=False)
 
     # Define prior distribution
     M = args.latent_dim
@@ -198,7 +218,7 @@ if __name__ == "__main__":
         optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
         # Train model
-        train(model, optimizer, mnist_train_loader, args.epochs, args.device)
+        train(model, optimizer, train_loader, args.epochs, args.device)
 
         # Save model
         torch.save(model.state_dict(), args.model)
@@ -211,3 +231,8 @@ if __name__ == "__main__":
         with torch.no_grad():
             samples = (model.sample(64)).cpu() 
             save_image(samples.view(64, 1, 28, 28), args.samples)
+
+    elif args.mode == 'test':
+        elbo_loss = test(model, mnist_test_loader, args.device, args.model)
+        print(f"Elbo loss for {args.model}: {elbo_loss}")
+
