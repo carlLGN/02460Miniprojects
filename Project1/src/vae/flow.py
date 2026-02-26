@@ -90,8 +90,15 @@ class MaskedCouplingLayer(nn.Module):
         sum_log_det_J: [torch.Tensor]
             The sum of the log determinants of the Jacobian matrices of the inverse transformations.
         """
-        z = x
-        log_det_J = torch.zeros(x.shape[0])
+        x_masked = x * self.mask
+
+        s = self.scale_net(x_masked) * (1 - self.mask)
+        t = self.translation_net(x_masked) * (1 - self.mask)
+
+        z = (x-t)*torch.exp(-s)
+
+        log_det_J = - s.sum(dim=1)
+
         return z, log_det_J
 
 
