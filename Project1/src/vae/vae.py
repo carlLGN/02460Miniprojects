@@ -88,7 +88,7 @@ class VAE(nn.Module):
         return -self.elbo(x)
 
 
-def train(model, optimizer, data_loader, epochs, device):
+def train(model, optimizer, data_loader, val_data_loader, epochs, device):
     """
     Train a VAE model.
 
@@ -105,9 +105,14 @@ def train(model, optimizer, data_loader, epochs, device):
         The device to use for training.
     """
     model.train()
+    best_model = model
 
     total_steps = len(data_loader)*epochs
     progress_bar = tqdm(range(total_steps), desc="Training")
+
+    curr_epoch_loss = -torch.inf
+    tolerance = 2
+    curr_fails = 0
 
     for epoch in range(epochs):
         data_iter = iter(data_loader)
@@ -121,6 +126,36 @@ def train(model, optimizer, data_loader, epochs, device):
             # Update progress bar
             progress_bar.set_postfix(loss=f"⠀{loss.item():12.4f}", epoch=f"{epoch+1}/{epochs}")
             progress_bar.update()
+    
+        validation_loss = validate(model, val_data_loader=val_data_loader, device=device)
+        print(f"Epoch loss: {validation_loss}")
+        if validation_loss < curr_epoch_loss:
+            curr_fails += 1
+            if curr_fails >= tolerance:
+                print(f"Early stopping at epoch {epoch}.")
+                break
+            curr_epoch_loss = validation_loss
+        else:
+            best_model = model
+            curr_epoch_loss = validation_loss
+            curr_fails = 0
+
+    return best_model
+
+
+def validate(model, val_data_loader, device):
+
+    model.eval()
+
+    data_iter = iter(val_data_loader)
+    test_elbo = torch.ones(len(data_iter))*torch.inf
+    for k, x in enumerate(data_iter):
+        batch_elbo = model.elbo(x[0].to(device))
+        test_elbo[k] = batch_elbo
+
+    model.train()
+
+    return torch.mean(test_elbo)
 
 
 def test(model, data_loader, device, model_path):
@@ -164,15 +199,17 @@ if __name__ == "__main__":
 
     # Load MNIST as binarized at 'thresshold' and create data loaders
     thresshold = 0.5
-    mnist_train_loader = torch.utils.data.DataLoader(datasets.MNIST('data/', train=True, download=True,
-                                                                    transform=transforms.Compose([transforms.ToTensor(), transforms.Lambda(lambda x: (thresshold < x).float().squeeze())])),
-                                                    batch_size=args.batch_size, shuffle=True)
-    mnist_test_loader = torch.utils.data.DataLoader(datasets.MNIST('data/', train=False, download=True,
-                                                                transform=transforms.Compose([transforms.ToTensor(), transforms.Lambda(lambda x: (thresshold < x).float().squeeze())])),
-                                                    batch_size=args.batch_size, shuffle=True)
     
 
-    train_subset, val_subset = torch.utils.data.random_split(mnist_train_loader, [0.9, 0.1])
+    mnist_train_dataset = datasets.MNIST('data/', train=True, download=True,
+    transform=transforms.Compose([transforms.ToTensor(), transforms.Lambda(lambda x: (thresshold < x).float().squeeze())]))
+
+    mnist_test_loader = torch.utils.data.DataLoader(datasets.MNIST('data/', train=False, download=True,
+                                                            transform=transforms.Compose([transforms.ToTensor(), transforms.Lambda(lambda x: (thresshold < x).float().squeeze())])),
+                                                batch_size=args.batch_size, shuffle=True)
+
+    train_subset, val_subset = torch.utils.data.random_split(mnist_train_dataset, [0.9, 0.1])
+
     train_loader = torch.utils.data.DataLoader(train_subset, batch_size=args.batch_size, shuffle=True)
     val_loader = torch.utils.data.DataLoader(val_subset, batch_size=args.batch_size, shuffle=False)
 
@@ -218,10 +255,10 @@ if __name__ == "__main__":
         optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
         # Train model
-        train(model, optimizer, train_loader, args.epochs, args.device)
+        best_model = train(model, optimizer, train_loader, val_loader, args.epochs, args.device)
 
         # Save model
-        torch.save(model.state_dict(), args.model)
+        torch.save(best_model.state_dict(), args.model)
 
     elif args.mode == 'sample':
         model.load_state_dict(torch.load(args.model, map_location=torch.device(args.device)))
