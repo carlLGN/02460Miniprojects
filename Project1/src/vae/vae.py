@@ -173,6 +173,8 @@ if __name__ == "__main__":
     
 
     train_subset, val_subset = torch.utils.data.random_split(mnist_train_loader, [0.9, 0.1])
+    train_loader = torch.utils.data.DataLoader(train_subset, batch_size=args.batch_size, shuffle=True)
+    val_loader = torch.utils.data.DataLoader(val_subset, batch_size=args.batch_size, shuffle=False)
 
     # Define prior distribution
     M = args.latent_dim
@@ -216,7 +218,7 @@ if __name__ == "__main__":
         optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
         # Train model
-        train(model, optimizer, train_subset, args.epochs, args.device)
+        train(model, optimizer, train_loader, args.epochs, args.device)
 
         # Save model
         torch.save(model.state_dict(), args.model)
