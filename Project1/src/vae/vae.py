@@ -175,22 +175,20 @@ def test(model: nn.Module, data_loader: DataLoader, device: str, model_path: str
         test_elbo[k] = batch_elbo
     return torch.mean(test_elbo)
 
-def sweep(model: nn.Module, grid: dict, data_loader: DataLoader, val_data_loader: DataLoader, epochs: int, device: str):
+def sweep(args, grid: dict, data_loader: DataLoader, val_data_loader: DataLoader, epochs: int, device: str):
 
     keys = grid.keys()
     values = grid.values()
     combinations = list(itertools.product(*values))
 
     best_elbo = -torch.inf
-    initial_weights = copy.deepcopy(model.state_dict())
     best_weights = None
     best_params = None
     results = []
 
-
     for params in combinations:
         param_dict = dict(zip(keys, params))
-        model.load_state_dict(initial_weights)
+        model = build_model(args=args, param_dict=param_dict, device=device)
         model.train()
 
         optimizer = torch.optim.Adam(model.parameters(), lr=param_dict["learning_rate"])
@@ -205,6 +203,50 @@ def sweep(model: nn.Module, grid: dict, data_loader: DataLoader, val_data_loader
             best_weights = copy.deepcopy(trained_model_dict)
     
     return best_weights, best_params, results
+
+
+
+def build_model(args, param_dict, device):
+    latent_dim = param_dict.get("latent_dim", args.latent_dim)
+    hidden_dim = param_dict.get("hidden_dim", 512)
+
+    if args.prior == 'gaussian':
+        prior = GaussianPrior(latent_dim)
+
+    elif args.prior == 'mix':
+        K = param_dict.get("K", 5)
+        prior = MoGPrior(latent_dim, K=K)
+
+    elif args.prior == 'flow':
+        n_transforms = param_dict.get("n_transforms", 4)
+        prior = FlowPrior(latent_dim, n_transformations=n_transforms)
+
+    else:
+        raise NotImplementedError('Prior does not exist')
+
+    encoder_net = nn.Sequential(
+        nn.Flatten(),
+        nn.Linear(784, hidden_dim),
+        nn.ReLU(),
+        nn.Linear(hidden_dim, hidden_dim),
+        nn.ReLU(),
+        nn.Linear(hidden_dim, latent_dim * 2),
+    )
+
+    decoder_net = nn.Sequential(
+        nn.Linear(latent_dim, hidden_dim),
+        nn.ReLU(),
+        nn.Linear(hidden_dim, hidden_dim),
+        nn.ReLU(),
+        nn.Linear(hidden_dim, 784),
+        nn.Unflatten(-1, (28, 28))
+    )
+
+    decoder = BernoulliDecoder(decoder_net)
+    encoder = GaussianEncoder(encoder_net)
+
+    return VAE(prior, decoder, encoder).to(device)
+
 
 
 if __name__ == "__main__":
@@ -249,60 +291,34 @@ if __name__ == "__main__":
     val_loader = DataLoader(val_subset, batch_size=args.batch_size, shuffle=False)
 
     # Define prior distribution
-    M = args.latent_dim
-    M_sweep = [8, 16, 32, 64]
+    M_sweep = [16, 32, 64, 128]
 
     if args.prior == 'gaussian':
-        prior = GaussianPrior(M)
-        params = {'learning_rate': [0.001, 0.01, 0.1],
-                      'hidden_dim': M_sweep}
+        params = {'learning_rate': [1e-3],
+                      'latent_dim': M_sweep}
         
     elif args.prior == 'mix':
-        prior = MoGPrior(M, K = 5)
-        params = {'learning_rate': [0.001, 0.01, 0.1],
-                      'hidden_dim': M_sweep,
+        params = {'learning_rate': [1e-3],
+                      'latent_dim': M_sweep,
                       'K': [3, 4, 5, 6]}
 
     elif args.prior == 'flow':
-        prior = FlowPrior(M, n_transformations=4)
-        params = {'learning_rate': [0.001, 0.01, 0.1],
-                      'hidden_dim': M_sweep,
+        params = {'learning_rate': [1e-3],
+                      'latent_dim': M_sweep,
                       'n_transforms':[2, 4, 6, 8]}
     else:
         raise NotImplementedError('Prior does not exist')
 
-    # Define encoder and decoder networks
-    encoder_net = nn.Sequential(
-        nn.Flatten(),
-        nn.Linear(784, 512),
-        nn.ReLU(),
-        nn.Linear(512, 512),
-        nn.ReLU(),
-        nn.Linear(512, M*2),
-    )
-
-    decoder_net = nn.Sequential(
-        nn.Linear(M, 512),
-        nn.ReLU(),
-        nn.Linear(512, 512),
-        nn.ReLU(),
-        nn.Linear(512, 784),
-        nn.Unflatten(-1, (28, 28))
-    )
-
-    # Define VAE model
-    decoder = BernoulliDecoder(decoder_net)
-    encoder = GaussianEncoder(encoder_net)
-    model = VAE(prior, decoder, encoder).to(device)
 
     # Choose mode to run
     if args.mode == 'train':
         if args.sweep:
-            best_weights, best_params, results = sweep(model, params, train_loader, val_loader, args.epochs, args.device)
+            best_weights, best_params, results = sweep(args, params, train_loader, val_loader, args.epochs, args.device)
             torch.save(best_weights, args.model)
             print(best_params)
             print(results)
         else:
+            model = build_model(args=args, device=args.device)
             # Define optimizer
             optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
@@ -313,6 +329,7 @@ if __name__ == "__main__":
             torch.save(best_model_dict, args.model)
 
     elif args.mode == 'sample':
+        model = build_model(args=args, device=args.device)
         model.load_state_dict(torch.load(args.model, map_location=torch.device(args.device)))
 
         # Generate samples
@@ -322,6 +339,7 @@ if __name__ == "__main__":
             save_image(samples.view(64, 1, 28, 28), args.samples)
 
     elif args.mode == 'test':
+        model = build_model(args=args, device=args.device)
         elbo_loss = test(model, mnist_test_loader, args.device, args.model)
         print(f"Elbo loss for {args.model}: {elbo_loss}")
 
