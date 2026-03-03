@@ -6,8 +6,11 @@ Project3/src/models
 uv.exe
 uvw.exe
 uvx.exe
+uv.lock
 data
 .vscode
+Project1/src/PartB/models
+Project1/src/PartB/pictures
 
 # cache
 __pycache__
