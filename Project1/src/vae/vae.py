@@ -206,7 +206,7 @@ def sweep(args, grid: dict, data_loader: DataLoader, val_data_loader: DataLoader
 
 
 
-def build_model(args, param_dict, device):
+def build_model(args, param_dict={}, device="cpu"):
     latent_dim = param_dict.get("latent_dim", args.latent_dim)
     hidden_dim = param_dict.get("hidden_dim", 512)
 
@@ -309,6 +309,21 @@ if __name__ == "__main__":
     else:
         raise NotImplementedError('Prior does not exist')
 
+    if args.mode == "sample" or args.mode == "test":
+        # load correct hyperparameters
+        state_dict = torch.load(args.model, map_location=args.device)
+
+        if args.prior == "gaussian":
+            param_dict = {"latent_dim": state_dict["prior.mean"].shape[-1]}
+
+        elif args.prior == "mix":
+            param_dict = {"latent_dim": state_dict["prior.mean"].shape[-1],
+                          "K": state_dict["prior.mean"].shape[0]}
+            
+        elif args.prior == "flow":
+            param_dict = {"latent_dim": state_dict["prior.flow.base.mean"].shape[-1],
+                          "n_transforms": max([int(i[27]) for i in state_dict.keys() if i[:26]=="prior.flow.transformations"]) + 1}
+
 
     # Choose mode to run
     if args.mode == 'train':
@@ -329,7 +344,7 @@ if __name__ == "__main__":
             torch.save(best_model_dict, args.model)
 
     elif args.mode == 'sample':
-        model = build_model(args=args, device=args.device)
+        model = build_model(args=args, param_dict=param_dict, device=args.device)
         model.load_state_dict(torch.load(args.model, map_location=torch.device(args.device)))
 
         # Generate samples
@@ -339,7 +354,9 @@ if __name__ == "__main__":
             save_image(samples.view(64, 1, 28, 28), args.samples)
 
     elif args.mode == 'test':
-        model = build_model(args=args, device=args.device)
+        model = build_model(args=args, param_dict=param_dict, device=args.device)
+        model.load_state_dict(torch.load(args.model, map_location=torch.device(args.device)))
+
         elbo_loss = test(model, mnist_test_loader, args.device, args.model)
         print(f"Elbo loss for {args.model}: {elbo_loss}")
 
