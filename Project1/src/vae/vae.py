@@ -6,9 +6,12 @@
 # Updated by group 50 for 02460 mini-project 1 spring 2026.
 
 import torch
+import itertools
 import torch.nn as nn
 import torch.distributions as td
 import torch.utils.data
+
+from torch.utils.data import DataLoader
 from torch.nn import functional as F
 from tqdm import tqdm
 
@@ -18,6 +21,7 @@ from Project1.src.vae.prior_MoG import MoGPrior
 from Project1.src.vae.prior_flow import FlowPrior
 
 import pdb
+import copy
 
 #TODO: hydra config til at definere prior
 #TODO: Andre masking strategier i flow prior?
@@ -88,7 +92,7 @@ class VAE(nn.Module):
         return -self.elbo(x)
 
 
-def train(model, optimizer, data_loader, val_data_loader, epochs, device):
+def train(model: nn.Module, optimizer: torch.optim.Optimizer, data_loader: DataLoader, val_data_loader: DataLoader, epochs: int, device: str):
     """
     Train a VAE model.
 
@@ -105,7 +109,7 @@ def train(model, optimizer, data_loader, val_data_loader, epochs, device):
         The device to use for training.
     """
     model.train()
-    best_model = model
+    best_model_dict = copy.deepcopy(model.state_dict())
 
     total_steps = len(data_loader)*epochs
     progress_bar = tqdm(range(total_steps), desc="Training")
@@ -134,16 +138,15 @@ def train(model, optimizer, data_loader, val_data_loader, epochs, device):
             if curr_fails >= tolerance:
                 print(f"Early stopping at epoch {epoch}.")
                 break
-            curr_epoch_loss = validation_loss
         else:
-            best_model = model
+            best_model_dict = copy.deepcopy(model.state_dict())
             curr_epoch_loss = validation_loss
             curr_fails = 0
 
-    return best_model
+    return best_model_dict, curr_epoch_loss
 
 
-def validate(model, val_data_loader, device):
+def validate(model: nn.Module, val_data_loader: DataLoader, device: str):
 
     model.eval()
 
@@ -158,7 +161,7 @@ def validate(model, val_data_loader, device):
     return torch.mean(test_elbo)
 
 
-def test(model, data_loader, device, model_path):
+def test(model: nn.Module, data_loader: DataLoader, device: str, model_path: str):
 
     model.eval()
 
@@ -171,6 +174,39 @@ def test(model, data_loader, device, model_path):
         batch_elbo = model.elbo(x[0].to(device))
         test_elbo[k] = batch_elbo
     return torch.mean(test_elbo)
+
+def sweep(model: nn.Module, grid: dict, data_loader: DataLoader, val_data_loader: DataLoader, epochs: int, device: str):
+
+    keys = grid.keys()
+    values = grid.values()
+    combinations = list(itertools.product(*values))
+
+    best_elbo = -torch.inf
+    initial_weights = copy.deepcopy(model.state_dict())
+    best_weights = None
+    best_params = None
+    results = []
+
+
+    for params in combinations:
+        param_dict = dict(zip(keys, params))
+        model.load_state_dict(initial_weights)
+        model.train()
+
+        optimizer = torch.optim.Adam(model.parameters(), lr=param_dict["learning_rate"])
+
+        trained_model_dict, current_elbo = train(model, optimizer, data_loader, val_data_loader, epochs, device)
+
+        results.append({'params': param_dict, 'elbo': current_elbo})
+
+        if current_elbo > best_elbo: 
+            best_elbo = current_elbo
+            best_params = param_dict
+            best_weights = copy.deepcopy(trained_model_dict)
+
+    model.load_state_dict(best_weights)
+    
+    return model, best_params, results
 
 
 if __name__ == "__main__":
@@ -189,6 +225,7 @@ if __name__ == "__main__":
     parser.add_argument('--epochs', type=int, default=10, metavar='N', help='number of epochs to train (default: %(default)s)')
     parser.add_argument('--latent-dim', type=int, default=32, metavar='N', help='dimension of latent variable (default: %(default)s)')
     parser.add_argument('--prior', type=str, default='gaussian', help='prior for vae, choices are: gaussian, mix, flow (default: %(default)s)')
+    parser.add_argument('--sweep', type=bool, default=False, help="Switch to do hyperparameter sweep. (default: False)")
 
     args = parser.parse_args()
     print('# Options')
@@ -204,24 +241,38 @@ if __name__ == "__main__":
     mnist_train_dataset = datasets.MNIST('data/', train=True, download=True,
     transform=transforms.Compose([transforms.ToTensor(), transforms.Lambda(lambda x: (thresshold < x).float().squeeze())]))
 
-    mnist_test_loader = torch.utils.data.DataLoader(datasets.MNIST('data/', train=False, download=True,
+    mnist_test_loader = DataLoader(datasets.MNIST('data/', train=False, download=True,
                                                             transform=transforms.Compose([transforms.ToTensor(), transforms.Lambda(lambda x: (thresshold < x).float().squeeze())])),
                                                 batch_size=args.batch_size, shuffle=True)
 
     train_subset, val_subset = torch.utils.data.random_split(mnist_train_dataset, [0.9, 0.1])
 
-    train_loader = torch.utils.data.DataLoader(train_subset, batch_size=args.batch_size, shuffle=True)
-    val_loader = torch.utils.data.DataLoader(val_subset, batch_size=args.batch_size, shuffle=False)
+    train_loader = DataLoader(train_subset, batch_size=args.batch_size, shuffle=True)
+    val_loader = DataLoader(val_subset, batch_size=args.batch_size, shuffle=False)
 
     # Define prior distribution
     M = args.latent_dim
+    M_sweep = [16, 32, 64]
 
     if args.prior == 'gaussian':
         prior = GaussianPrior(M)
+        params = {'learning_rate': [0.001, 0.01, 0.1],
+                      'batch_size': [32, 64, 128],
+                      'hidden_dim': M_sweep}
+        
     elif args.prior == 'mix':
         prior = MoGPrior(M, K = 5)
+        params = {'learning_rate': [0.001, 0.01, 0.1],
+                      'batch_size': [32, 64, 128],
+                      'hidden_dim': M_sweep,
+                      'K': [3, 4, 5, 6]}
+
     elif args.prior == 'flow':
         prior = FlowPrior(M, n_transformations=4)
+        params = {'learning_rate': [0.001, 0.01, 0.1],
+                      'batch_size': [32, 64, 128],
+                      'hidden_dim': M_sweep,
+                      'n_transforms':[2, 4, 6, 8]}
     else:
         raise NotImplementedError('Prior does not exist')
 
@@ -251,14 +302,19 @@ if __name__ == "__main__":
 
     # Choose mode to run
     if args.mode == 'train':
-        # Define optimizer
-        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+        if args.sweep:
+            best_model, best_params, results = sweep(model, params, train_loader, val_loader, args.epochs, args.device)
 
-        # Train model
-        best_model = train(model, optimizer, train_loader, val_loader, args.epochs, args.device)
 
-        # Save model
-        torch.save(best_model.state_dict(), args.model)
+        else:
+            # Define optimizer
+            optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+
+            # Train model
+            best_model_dict, _ = train(model, optimizer, train_loader, val_loader, args.epochs, args.device)
+
+            # Save model
+            torch.save(best_model_dict, args.model)
 
     elif args.mode == 'sample':
         model.load_state_dict(torch.load(args.model, map_location=torch.device(args.device)))
