@@ -3,6 +3,11 @@
 Project1/src/models
 Project2/src/models
 Project3/src/models
+uv.exe
+uvw.exe
+uvx.exe
+data
+.vscode
 
 # cache
 __pycache__

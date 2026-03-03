@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.distributions as td
 import torch.nn.functional as F
 from tqdm import tqdm
-from UnetClass import Unet 
+from Project1.src.PartB.UnetClass import Unet 
 
 class DDPM(nn.Module):
     def __init__(self, network, beta_1=1e-4, beta_T=2e-2, T=100):
@@ -117,7 +117,7 @@ class DDPM(nn.Module):
         return self.negative_elbo(x).mean()
 
 
-def train(model, optimizer, data_loader, epochs, device):
+def train(model, optimizer, train_loader, val_loader, epochs, device, patience=3, min_delta=1e-3):
     """
     Train a Flow model.
 
@@ -133,19 +133,22 @@ def train(model, optimizer, data_loader, epochs, device):
     device: [torch.device]
         The device to use for training.
     """
-    model.train()
 
-    total_steps = len(data_loader)*epochs
-    progress_bar = tqdm(range(total_steps), desc="Training")
+    best_val_loss = float('inf')
+    epochs_no_improve = 0
 
     for epoch in range(epochs):
-        data_iter = iter(data_loader)
-        for x in data_iter:
+        # --- Training Phase ---
+        model.train()
+        train_loss = 0.0
+        
+        progress_bar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs} [Train]")
+        for x in progress_bar:
             if isinstance(x, (list, tuple)):
                 x = x[0]
             x = x.to(device)
 
-            # For Unet defined above (expects flattened x)
+            # Flattening for FcNetwork (remove if using a 2D Unet instead)
             x = x.view(x.size(0), -1)
 
             optimizer.zero_grad()
@@ -153,9 +156,41 @@ def train(model, optimizer, data_loader, epochs, device):
             loss.backward()
             optimizer.step()
 
-            # Update progress bar
-            progress_bar.set_postfix(loss=f"⠀{loss.item():12.4f}", epoch=f"{epoch+1}/{epochs}")
-            progress_bar.update()
+            train_loss += loss.item()
+            progress_bar.set_postfix(loss=f"{loss.item():12.4f}")
+            
+        avg_train_loss = train_loss / len(train_loader)
+
+        # --- Validation Phase ---
+        model.eval()
+        val_loss = 0.0
+        with torch.no_grad():
+            for x in val_loader:
+                if isinstance(x, (list, tuple)):
+                    x = x[0]
+                x = x.to(device)
+                
+                # Apply the same flattening for validation
+                x = x.view(x.size(0), -1)
+                
+                val_loss += model.loss(x).item()
+                
+        avg_val_loss = val_loss / len(val_loader)
+        
+        print(f"Epoch {epoch+1} Summary: Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
+
+        # --- Early Stopping Logic ---
+        if avg_val_loss < best_val_loss - min_delta:
+            best_val_loss = avg_val_loss
+            epochs_no_improve = 0
+            # Optional: Save best model weights here
+        else:
+            epochs_no_improve += 1
+            print(f"No improvement in validation loss for {epochs_no_improve} epoch(s).")
+            
+        if epochs_no_improve >= patience:
+            print(f"Early stopping triggered! Training stopped after {epoch+1} epochs.")
+            break
 
 
 class FcNetwork(nn.Module):
@@ -199,7 +234,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('mode', type=str, default='train', choices=['train', 'sample', 'test'], help='what to do when running the script (default: %(default)s)')
     parser.add_argument('--data', type=str, default='tg', choices=['tg', 'cb', 'mnist'], help='dataset to use {tg: two Gaussians, cb: chequerboard} (default: %(default)s)')
-    parser.add_argument('--model', type=str, default='model.pt', help='file to save model to or load model from (default: %(default)s)')
+    parser.add_argument('--model', type=str, default='ddpm_earlystop.pt', help='file to save model to or load model from (default: %(default)s)')
     parser.add_argument('--samples', type=str, default='samples.png', help='file to save samples in (default: %(default)s)')
     parser.add_argument('--device', type=str, default='cpu', choices=['cpu', 'cuda', 'mps'], help='torch device (default: %(default)s)')
     parser.add_argument('--batch-size', type=int, default=64, metavar='N', help='batch size for training (default: %(default)s)')
@@ -207,6 +242,8 @@ if __name__ == "__main__":
     parser.add_argument('--lr', type=float, default=1e-3, metavar='V', help='learning rate for training (default: %(default)s)')
     parser.add_argument('--T', type=int, default=1000)
     parser.add_argument('--n-samples', type=int, default=64)
+    parser.add_argument('--patience', type=int, default=3, metavar='N', help='epochs to wait for improvement before stopping (default: %(default)s)')
+    parser.add_argument('--min-delta', type=float, default=0.1, metavar='M', help='minimum required improvement (default: %(default)s)')
     args = parser.parse_args()
 
     print('# Options')
@@ -228,7 +265,7 @@ if __name__ == "__main__":
     test_loader  = torch.utils.data.DataLoader(test_ds,  batch_size=args.batch_size, shuffle=False, num_workers=0)
 
     # Unet 
-    network = FcNetwork()
+    network = Unet()
 
     model = DDPM(network, T=args.T).to(device)
 
@@ -238,7 +275,16 @@ if __name__ == "__main__":
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
         # Train model
-        train(model, optimizer, train_loader, args.epochs, args.device)
+        train(
+            model=model, 
+            optimizer=optimizer, 
+            train_loader=train_loader, 
+            val_loader=test_loader, 
+            epochs=args.epochs, 
+            device=device,
+            patience=args.patience,
+            min_delta=args.min_delta
+        )
 
         # Save model
         torch.save(model.state_dict(), args.model)

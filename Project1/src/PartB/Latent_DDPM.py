@@ -120,35 +120,78 @@ class Latent_DDPM(nn.Module):
         return self.negative_elbo(x).mean()
 
 
-def train_latent_ddpm(ddpm_latent, vae, optimizer, data_loader, epochs, device):
+def train_latent_ddpm(ddpm_latent, vae, optimizer, train_loader, val_loader, epochs, device, patience=3, min_delta=1e-3):
     ddpm_latent.train()
     vae.eval()
+    
+    # Ensure VAE parameters don't get updated
     for p in vae.parameters():
         p.requires_grad = False
 
-    total_steps = len(data_loader) * epochs
-    progress_bar = tqdm(range(total_steps), desc="Training latent DDPM")
+    best_val_loss = float('inf')
+    epochs_no_improve = 0
 
     for epoch in range(epochs):
-        for batch in data_loader:
+        # --- Training Phase ---
+        ddpm_latent.train()
+        train_loss = 0.0
+        progress_bar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs} [Train]")
+        
+        for batch in progress_bar:
             if isinstance(batch, (list, tuple)):
                 x = batch[0]
             else:
                 x = batch
-            x = x.to(device)  # (B,1,28,28)
+            x = x.to(device)
 
-            # encode to latent (B,M)
+            # Encode to latent space
             with torch.no_grad():
                 q = vae.encoder(x)
-                z = q.rsample()           # or q.rsample()
+                z = q.rsample()
 
             optimizer.zero_grad()
             loss = ddpm_latent.loss(z)
             loss.backward()
             optimizer.step()
 
-            progress_bar.set_postfix(loss=f"⠀{loss.item():12.4f}", epoch=f"{epoch+1}/{epochs}")
-            progress_bar.update()
+            train_loss += loss.item()
+            progress_bar.set_postfix(loss=f"{loss.item():12.4f}")
+            
+        avg_train_loss = train_loss / len(train_loader)
+
+        # --- Validation Phase ---
+        ddpm_latent.eval()
+        val_loss = 0.0
+        with torch.no_grad():
+            for batch in val_loader:
+                if isinstance(batch, (list, tuple)):
+                    x = batch[0]
+                else:
+                    x = batch
+                x = x.to(device)
+                
+                # Encode to latent space
+                q = vae.encoder(x)
+                z = q.rsample()
+                
+                val_loss += ddpm_latent.loss(z).item()
+                
+        avg_val_loss = val_loss / len(val_loader)
+        
+        print(f"Epoch {epoch+1} Summary: Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
+
+        # --- Early Stopping Logic ---
+        if avg_val_loss < best_val_loss - min_delta:
+            best_val_loss = avg_val_loss
+            epochs_no_improve = 0
+            # Optional: save best latent DDPM weights here
+        else:
+            epochs_no_improve += 1
+            print(f"No improvement in validation loss for {epochs_no_improve} epoch(s).")
+            
+        if epochs_no_improve >= patience:
+            print(f"Early stopping triggered! Training stopped after {epoch+1} epochs.")
+            break
 
 
 class FcNetwork(nn.Module):
@@ -192,7 +235,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('mode', type=str, default='train', choices=['train', 'sample', 'test'], help='what to do when running the script (default: %(default)s)')
     parser.add_argument('--data', type=str, default='tg', choices=['tg', 'cb', 'mnist'], help='dataset to use {tg: two Gaussians, cb: chequerboard} (default: %(default)s)')
-    parser.add_argument('--model', type=str, default='latent_ddpm_model.pt', help='file to save model to or load model from (default: %(default)s)')
+    parser.add_argument('--model', type=str, default='Project1/src/PartB/latent_ddpm_model_beta1e-6.pt', help='file to save model to or load model from (default: %(default)s)')
     parser.add_argument('--samples', type=str, default='latent_ddpm_samples.png', help='file to save samples in (default: %(default)s)')
     parser.add_argument('--device', type=str, default='cpu', choices=['cpu', 'cuda', 'mps'], help='torch device (default: %(default)s)')
     parser.add_argument('--batch-size', type=int, default=64, metavar='N', help='batch size for training (default: %(default)s)')
@@ -202,6 +245,9 @@ if __name__ == "__main__":
     parser.add_argument('--n-samples', type=int, default=64)
     parser.add_argument('--latent-dim', type=int, default=32)
     parser.add_argument('--hidden', type=int, default=512)    
+    parser.add_argument('--vae-model', type=str, default='Project1/src/PartB/beta_vae_model_earlystop_beta1e-6.pt', help='path to the trained VAE model')
+    parser.add_argument('--patience', type=int, default=3, metavar='N', help='epochs to wait for improvement before stopping')
+    parser.add_argument('--min-delta', type=float, default=1e-3, metavar='M', help='minimum required improvement')
     args = parser.parse_args()
 
 
@@ -220,6 +266,10 @@ if __name__ == "__main__":
     train_ds = datasets.MNIST(root="./data", train=True, download=True, transform=tfm)
     train_loader = torch.utils.data.DataLoader(
         train_ds, batch_size=args.batch_size, shuffle=True, num_workers=0
+    )
+    test_ds = datasets.MNIST(root="./data", train=False, download=True, transform=tfm)
+    test_loader = torch.utils.data.DataLoader(
+        test_ds, batch_size=args.batch_size, shuffle=False, num_workers=0
     )
 
     # ------------------------------------------------------------
@@ -248,21 +298,19 @@ if __name__ == "__main__":
         nn.Linear(512, 784),
         nn.Unflatten(-1, (28, 28)),
     )
-
+  
     encoder = GaussianEncoder(encoder_net)
     decoder = GaussianDecoder(decoder_net)
-
     vae = Beta_VAE(prior, decoder, encoder).to(device)
-  
-  # ---- hardcode checkpoint path ----
-    VAE_CKPT_PATH = r"Project1/src/PartB/beta_VAE_model.pt"   # change to your actual path
-    state_dict = torch.load(VAE_CKPT_PATH, map_location=device)
-    vae.load_state_dict(state_dict)
 
+    if not os.path.exists(args.vae_model):
+        raise FileNotFoundError(f"Could not find trained VAE at {args.vae_model}. Train it first!")
+        
+    vae.load_state_dict(torch.load(args.vae_model, map_location=device))
     vae.eval()
     for p in vae.parameters():
         p.requires_grad = False
-    print(f"Loaded VAE checkpoint from: {VAE_CKPT_PATH}")
+    print(f"Successfully loaded VAE from: {args.vae_model}")
 
     # ------------------------------------------------------------
     # 2) Build latent DDPM (input_dim must be M)
@@ -275,17 +323,28 @@ if __name__ == "__main__":
     # ------------------------------------------------------------
     from pathlib import Path
 
-    save_dir = Path("Project1/src/PartB")
-    save_dir.mkdir(parents=True, exist_ok=True)
+    # Convert argparse strings to Path objects
+    model_path = Path(args.model)
+    sample_path = Path(args.samples)
 
-
-    model_path = save_dir / "latent_DDPM_model_1.pt"
-    sample_path = save_dir / "latent_ddpm_samples.png"
+    # Automatically create the parent directories if they don't exist
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    sample_path.parent.mkdir(parents=True, exist_ok=True)
 
     if args.mode == 'train':
         optimizer = torch.optim.Adam(latent_model.parameters(), lr=args.lr)
 
-        train_latent_ddpm(latent_model, vae, optimizer, train_loader, args.epochs, device)
+        train_latent_ddpm(
+            ddpm_latent=latent_model, 
+            vae=vae, 
+            optimizer=optimizer, 
+            train_loader=train_loader, 
+            val_loader=test_loader, 
+            epochs=args.epochs, 
+            device=device,
+            patience=args.patience,
+            min_delta=args.min_delta
+        )
 
         torch.save(latent_model.state_dict(), model_path)
         print("Saved latent DDPM to:", model_path)
@@ -298,7 +357,7 @@ if __name__ == "__main__":
             z = latent_model.sample((args.n_samples, M))
             px = vae.decoder(z)
             x = px.mean
-            x = x.unsqueeze(1)
+            x = x.unsqueeze(1) # Note: make sure this matches your VAE unflatten!
             x = (x + 1) / 2
             x = x.clamp(0, 1)
 

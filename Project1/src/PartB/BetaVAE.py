@@ -35,7 +35,7 @@ class Beta_VAE(nn.Module):
     """
     Define a Variational Autoencoder (VAE) model.
     """
-    def __init__(self, prior, decoder, encoder, beta = 1):
+    def __init__(self, prior, decoder, encoder, beta = 1e-3):
         """
         Parameters:
         prior: [torch.nn.Module] 
@@ -98,7 +98,7 @@ class Beta_VAE(nn.Module):
         return -self.elbo(x)
 
 
-def train(model, optimizer, data_loader, epochs, device):
+def train(model, optimizer, train_loader, val_loader, epochs, device, patience=5, min_delta=1e-4):
     """
     Train a VAE model.
 
@@ -114,23 +114,51 @@ def train(model, optimizer, data_loader, epochs, device):
     device: [torch.device]
         The device to use for training.
     """
-    model.train()
-
-    total_steps = len(data_loader)*epochs
-    progress_bar = tqdm(range(total_steps), desc="Training")
+    best_val_loss = float('inf')
+    epochs_no_improve = 0
 
     for epoch in range(epochs):
-        data_iter = iter(data_loader)
-        for x in data_iter:
+        # --- Training Phase ---
+        model.train()
+        train_loss = 0.0
+        
+        progress_bar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs} [Train]")
+        for x in progress_bar:
             x = x[0].to(device)
             optimizer.zero_grad()
             loss = model(x)
             loss.backward()
             optimizer.step()
+            
+            train_loss += loss.item()
+            progress_bar.set_postfix(loss=f"{loss.item():12.4f}")
+            
+        avg_train_loss = train_loss / len(train_loader)
 
-            # Update progress bar
-            progress_bar.set_postfix(loss=f"⠀{loss.item():12.4f}", epoch=f"{epoch+1}/{epochs}")
-            progress_bar.update()
+        # --- Validation Phase ---
+        model.eval()
+        val_loss = 0.0
+        with torch.no_grad():
+            for x in val_loader:
+                x = x[0].to(device)
+                val_loss += model(x).item()
+                
+        avg_val_loss = val_loss / len(val_loader)
+        
+        print(f"Epoch {epoch+1} Summary: Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
+
+        # --- Early Stopping Logic ---
+        if avg_val_loss < best_val_loss - min_delta:
+            best_val_loss = avg_val_loss
+            epochs_no_improve = 0
+            # You could also save the best model weights here
+        else:
+            epochs_no_improve += 1
+            print(f"No improvement in validation loss for {epochs_no_improve} epoch(s).")
+            
+        if epochs_no_improve >= patience:
+            print(f"Early stopping triggered! Training stopped after {epoch+1} epochs.")
+            break
 
 
 if __name__ == "__main__":
@@ -142,13 +170,14 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('mode', type=str, default='train', choices=['train', 'sample'], help='what to do when running the script (default: %(default)s)')
-    parser.add_argument('--model', type=str, default='beta_vae_model.pt', help='file to save model to or load model from (default: %(default)s)')
+    parser.add_argument('--model', type=str, default='beta_vae_model_earlystop_beta1e-3.pt', help='file to save model to or load model from (default: %(default)s)')
     parser.add_argument('--samples', type=str, default='beta_vae_samples.png', help='file to save samples in (default: %(default)s)')
     parser.add_argument('--device', type=str, default='cpu', choices=['cpu', 'cuda', 'mps'], help='torch device (default: %(default)s)')
     parser.add_argument('--batch-size', type=int, default=32, metavar='N', help='batch size for training (default: %(default)s)')
     parser.add_argument('--epochs', type=int, default=1, metavar='N', help='number of epochs to train (default: %(default)s)')
     parser.add_argument('--latent-dim', type=int, default=32, metavar='N', help='dimension of latent variable (default: %(default)s)')
     parser.add_argument('--prior', type=str, default='gaussian', help='prior for vae, choices are: gaussian, mix, flow (default: %(default)s)')
+    parser.add_argument('--patience', type=int, default=5, metavar='N', help='number of epochs to wait for improvement before stopping (default: %(default)s)')
 
     args = parser.parse_args()
     print('# Options')
@@ -232,7 +261,15 @@ if __name__ == "__main__":
         optimizer = torch.optim.Adam(beta_vae_model.parameters(), lr=1e-3)
 
         # Train model
-        train(beta_vae_model, optimizer, mnist_train_loader, args.epochs, args.device)
+        train(
+            model=beta_vae_model, 
+            optimizer=optimizer, 
+            train_loader=mnist_train_loader, 
+            val_loader=mnist_test_loader, 
+            epochs=args.epochs, 
+            device=args.device,
+            patience=args.patience
+        )
 
         # Save model
         torch.save(beta_vae_model.state_dict(), model_path)
