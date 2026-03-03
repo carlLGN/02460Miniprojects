@@ -203,10 +203,8 @@ def sweep(model: nn.Module, grid: dict, data_loader: DataLoader, val_data_loader
             best_elbo = current_elbo
             best_params = param_dict
             best_weights = copy.deepcopy(trained_model_dict)
-
-    model.load_state_dict(best_weights)
     
-    return model, best_params, results
+    return best_weights, best_params, results
 
 
 if __name__ == "__main__":
@@ -252,25 +250,22 @@ if __name__ == "__main__":
 
     # Define prior distribution
     M = args.latent_dim
-    M_sweep = [16, 32, 64]
+    M_sweep = [8, 16, 32, 64]
 
     if args.prior == 'gaussian':
         prior = GaussianPrior(M)
         params = {'learning_rate': [0.001, 0.01, 0.1],
-                      'batch_size': [32, 64, 128],
                       'hidden_dim': M_sweep}
         
     elif args.prior == 'mix':
         prior = MoGPrior(M, K = 5)
         params = {'learning_rate': [0.001, 0.01, 0.1],
-                      'batch_size': [32, 64, 128],
                       'hidden_dim': M_sweep,
                       'K': [3, 4, 5, 6]}
 
     elif args.prior == 'flow':
         prior = FlowPrior(M, n_transformations=4)
         params = {'learning_rate': [0.001, 0.01, 0.1],
-                      'batch_size': [32, 64, 128],
                       'hidden_dim': M_sweep,
                       'n_transforms':[2, 4, 6, 8]}
     else:
@@ -303,9 +298,10 @@ if __name__ == "__main__":
     # Choose mode to run
     if args.mode == 'train':
         if args.sweep:
-            best_model, best_params, results = sweep(model, params, train_loader, val_loader, args.epochs, args.device)
-
-
+            best_weights, best_params, results = sweep(model, params, train_loader, val_loader, args.epochs, args.device)
+            torch.save(best_weights, args.model)
+            print(best_params)
+            print(results)
         else:
             # Define optimizer
             optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
