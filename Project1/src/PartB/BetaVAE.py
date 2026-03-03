@@ -171,7 +171,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('mode', type=str, default='train', choices=['train', 'sample'], help='what to do when running the script (default: %(default)s)')
     parser.add_argument('--model', type=str, default='beta_vae_model_earlystop_beta1e-3.pt', help='file to save model to or load model from (default: %(default)s)')
-    parser.add_argument('--samples', type=str, default='beta_vae_samples.png', help='file to save samples in (default: %(default)s)')
+    parser.add_argument('--samples', type=str, default='beta_vae_beta1e-6_samples.png', help='file to save samples in (default: %(default)s)')
     parser.add_argument('--device', type=str, default='cpu', choices=['cpu', 'cuda', 'mps'], help='torch device (default: %(default)s)')
     parser.add_argument('--batch-size', type=int, default=32, metavar='N', help='batch size for training (default: %(default)s)')
     parser.add_argument('--epochs', type=int, default=1, metavar='N', help='number of epochs to train (default: %(default)s)')
@@ -275,10 +275,20 @@ if __name__ == "__main__":
         torch.save(beta_vae_model.state_dict(), model_path)
 
     elif args.mode == 'sample':
+        # Load the weights
         beta_vae_model.load_state_dict(torch.load(model_path, map_location=torch.device(args.device)))
+        beta_vae_model.eval()
+        print(f"Successfully loaded model from {model_path}")
 
         # Generate samples
-        beta_vae_model.eval()
         with torch.no_grad():
-            samples = (beta_vae_model.sample(64)).cpu() 
-            save_image(samples.view(64, 1, 28, 28), args.samples)
+            samples = (beta_vae_model.sample(4)).cpu() 
+            
+            # UN-NORMALIZE from [-1, 1] back to [0, 1]
+            samples = (samples + 1) / 2
+            samples = samples.clamp(0, 1)
+            
+            # Save correctly into the save_dir
+            sample_path = save_dir / args.samples
+            save_image(samples.view(4, 1, 28, 28), sample_path)
+            print(f"Saved generated samples to {sample_path}")
