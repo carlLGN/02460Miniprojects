@@ -214,11 +214,11 @@ def build_model(args, param_dict={}, device="cpu"):
         prior = GaussianPrior(latent_dim)
 
     elif args.prior == 'mix':
-        K = param_dict.get("K", 5)
+        K = param_dict.get("K", 9)
         prior = MoGPrior(latent_dim, K=K)
 
     elif args.prior == 'flow':
-        n_transforms = param_dict.get("n_transforms", 4)
+        n_transforms = param_dict.get("n_transforms", 32)
         prior = FlowPrior(latent_dim, n_transformations=n_transforms)
 
     else:

@@ -18,3 +18,4 @@ __pycache__
 #bash scripts
 bash_scripts/
 bash_outputs/
+bootstrap/
