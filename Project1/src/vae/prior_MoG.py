@@ -21,9 +21,13 @@ class MoGPrior(nn.Module):
         self.M = M
         self.K = K
 
-        self.pi = nn.Parameter(torch.zeros(self.K), requires_grad=True) #TODO: Skal den learnes or no ?
-        self.mean = nn.Parameter(torch.zeros(self.K, self.M), requires_grad=True)
-        self.pre_stds = nn.Parameter(torch.ones(self.K, self.M), requires_grad=True)
+        self.pi = nn.Parameter(0.01 * torch.randn(self.K))
+        self.mean = nn.Parameter(0.01 * torch.randn(self.K, self.M))
+
+        init_pre_std = torch.log(torch.exp(torch.tensor(1.0)) - 1.0)
+        self.pre_stds = nn.Parameter(
+        init_pre_std + 0.01 * torch.randn(self.K, self.M)
+        )   
 
     def forward(self):
         """
@@ -41,3 +45,4 @@ class MoGPrior(nn.Module):
                     mixture_distribution=pi_dist, 
                     component_distribution=component_dist
                 )
+    

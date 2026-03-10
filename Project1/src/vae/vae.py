@@ -214,7 +214,7 @@ def build_model(args, param_dict={}, device="cpu"):
         prior = GaussianPrior(latent_dim)
 
     elif args.prior == 'mix':
-        K = param_dict.get("K", 9)
+        K = param_dict.get("K", 7)
         prior = MoGPrior(latent_dim, K=K)
 
     elif args.prior == 'flow':
@@ -291,7 +291,7 @@ if __name__ == "__main__":
     val_loader = DataLoader(val_subset, batch_size=args.batch_size, shuffle=False)
 
     # Define prior distribution
-    M_sweep = [8, 16, 32, 64, 128, 256]
+    M_sweep = [2]
 
     if args.prior == 'gaussian':
         params = {'learning_rate': [1e-3],
@@ -300,12 +300,12 @@ if __name__ == "__main__":
     elif args.prior == 'mix':
         params = {'learning_rate': [1e-3],
                       'latent_dim': M_sweep,
-                      'K': [5, 6, 7, 8, 9, 10, 11]}
+                      'K': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]}
 
     elif args.prior == 'flow':
         params = {'learning_rate': [1e-3],
                       'latent_dim': M_sweep,
-                      'n_transforms':[8, 16, 32]}
+                      'n_transforms':[2, 4, 8, 16, 32]}
     else:
         raise NotImplementedError('Prior does not exist')
 
@@ -323,7 +323,6 @@ if __name__ == "__main__":
         elif args.prior == "flow":
             param_dict = {"latent_dim": state_dict["prior.flow.base.mean"].shape[-1],
                           "n_transforms": max([int(i.split(".")[3]) for i in state_dict.keys() if i[:26]=="prior.flow.transformations"]) + 1}
-
 
     # Choose mode to run
     if args.mode == 'train':
