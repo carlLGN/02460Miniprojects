@@ -21,3 +21,6 @@ bash_outputs/
 bootstrap/
 
 Project1/outputs/
+
+# data folders
+data/
