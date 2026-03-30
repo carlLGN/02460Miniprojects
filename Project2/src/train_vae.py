@@ -16,6 +16,7 @@ import os
 import math
 import matplotlib.pyplot as plt
 
+from Project2.src.geodesics.plot_geodesics import plot_latent_geodesics
 from Project2.src.helpers import *
 from Project2.src.vae import *
 
@@ -44,6 +45,7 @@ def train(model, optimizer, data_loader, epochs, device):
         eps = std * torch.randn_like(x)
         return torch.clamp(x + eps, min=0.0, max=1.0)
 
+    mean_loss = 0
     with tqdm(range(num_steps)) as pbar:
         for step in pbar:
             try:
@@ -57,11 +59,16 @@ def train(model, optimizer, data_loader, epochs, device):
                 optimizer.step()
 
                 # Report
-                if step % 5 == 0:
+                if step % 20 == 0:
                     loss = loss.detach().cpu()
-                    pbar.set_description(
-                        f"total epochs ={epoch}, step={step}, loss={loss:.1f}"
-                    )
+                    mean_loss += loss
+
+                    if step % 200 == 0:
+                        mean_loss = mean_loss/10
+                        pbar.set_description(
+                            f"total epochs ={epoch}, step={step}, mean_loss={mean_loss:.1f}"
+                        )
+                        mean_loss = 0
 
                 if (step + 1) % len(data_loader) == 0:
                     epoch += 1
@@ -88,38 +95,44 @@ if __name__ == "__main__":
         help="what to do when running the script (default: %(default)s)",
     )
     parser.add_argument(
+        "--name",
+        type=str,
+        default="model",
+        help="name of the model - for file-name (default: %(default)s)"
+    )
+    parser.add_argument(
         "--experiment-folder",
         type=str,
-        default="experiment",
+        default="./Project2/outputs/experiment",
         help="folder to save and load experiment results in (default: %(default)s)",
     )
     parser.add_argument(
         "--samples",
         type=str,
-        default="samples.png",
+        default="./Project2/outputs/samples.png",
         help="file to save samples in (default: %(default)s)",
     )
 
     parser.add_argument(
         "--device",
         type=str,
-        default="cpu",
+        default="cuda",
         choices=["cpu", "cuda", "mps"],
         help="torch device (default: %(default)s)",
     )
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=32,
+        default=128,
         metavar="N",
         help="batch size for training (default: %(default)s)",
     )
     parser.add_argument(
-        "--epochs-per-decoder",
+        "--epochs",
         type=int,
-        default=50,
+        default=400,
         metavar="N",
-        help="number of training epochs per each decoder (default: %(default)s)",
+        help="number of training epochs (default: %(default)s)",
     )
     parser.add_argument(
         "--latent-dim",
@@ -127,13 +140,6 @@ if __name__ == "__main__":
         default=2,
         metavar="N",
         help="dimension of latent variable (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--num-decoders",
-        type=int,
-        default=3,
-        metavar="N",
-        help="number of decoders in the ensemble (default: %(default)s)",
     )
     parser.add_argument(
         "--num-reruns",
@@ -145,7 +151,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num-curves",
         type=int,
-        default=10,
+        default=25,
         metavar="N",
         help="number of geodesics to plot (default: %(default)s)",
     )
@@ -212,14 +218,14 @@ if __name__ == "__main__":
             model,
             optimizer,
             mnist_train_loader,
-            args.epochs_per_decoder,
+            args.epochs,
             args.device,
         )
         os.makedirs(f"{experiments_folder}", exist_ok=True)
 
         torch.save(
             model.state_dict(),
-            f"{experiments_folder}/model.pt",
+            f"{experiments_folder}/{args.name}.pt",
         )
 
     elif args.mode == "sample":
@@ -228,7 +234,7 @@ if __name__ == "__main__":
             GaussianDecoder(new_decoder(M)),
             GaussianEncoder(new_encoder(M)),
         ).to(device)
-        model.load_state_dict(torch.load(args.experiment_folder + "/model.pt"))
+        model.load_state_dict(torch.load(args.experiment_folder + f"/{args.name}.pt"))
         model.eval()
 
         with torch.no_grad():
@@ -238,7 +244,7 @@ if __name__ == "__main__":
             data = next(iter(mnist_test_loader))[0].to(device)
             recon = model.decoder(model.encoder(data).mean).mean
             save_image(
-                torch.cat([data.cpu(), recon.cpu()], dim=0), "reconstruction_means.png"
+                torch.cat([data.cpu(), recon.cpu()], dim=0), f"Project2/outputs/{args.name}_reconstruction_means.png"
             )
 
     elif args.mode == "eval":
@@ -248,7 +254,7 @@ if __name__ == "__main__":
             GaussianDecoder(new_decoder(M)),
             GaussianEncoder(new_encoder(M)),
         ).to(device)
-        model.load_state_dict(torch.load(args.experiment_folder + "/model.pt"))
+        model.load_state_dict(torch.load(args.experiment_folder + f"/{args.name}.pt"))
         model.eval()
 
         elbos = []
@@ -267,5 +273,29 @@ if __name__ == "__main__":
             GaussianDecoder(new_decoder(M)),
             GaussianEncoder(new_encoder(M)),
         ).to(device)
-        model.load_state_dict(torch.load(args.experiment_folder + "/model.pt"))
+        model.load_state_dict(torch.load(args.experiment_folder + f"/{args.name}.pt"))
         model.eval()
+
+        all_z = []
+        all_labels = []
+
+        with torch.no_grad():
+            for x, y in mnist_test_loader:
+                x = x.to(device)
+
+                z = model.encoder(x).mean 
+                all_z.append(z)
+                all_labels.append(y)
+
+        z_points = torch.cat(all_z, dim=0)
+        labels = torch.cat(all_labels, dim=0).numpy()
+
+        is_2d = (args.latent_dim == 2)
+        
+        plot_latent_geodesics(
+            z_points=z_points, 
+            labels=labels, 
+            decoders=[model.decoder], 
+            n_pairs=args.num_curves,  
+            is_2d=is_2d
+        )
