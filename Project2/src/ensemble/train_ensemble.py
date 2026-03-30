@@ -5,6 +5,7 @@ import os
 from Project2.src.ensemble.ensemble_vae import *
 
 
+from Project2.src.geodesics.curve_energy import curve_energy
 from Project2.src.vae import *
 from Project2.src.helpers import *
 from Project2.src.train_vae import train
@@ -135,9 +136,9 @@ if __name__ == "__main__":
     # Define prior distribution
     M = args.latent_dim
 
-
+    script_dir = os.path.dirname(os.path.abspath(__file__))
     if args.mode == "train":
-        base_folder = f"{args.experiment_folder}_decoders_{args.num_decoders}"
+        base_folder = os.path.join(script_dir, f"{args.experiment_folder}_decoders_{args.num_decoders}")
         os.makedirs(base_folder, exist_ok=True)
 
         for run in range(args.num_reruns):
@@ -235,8 +236,94 @@ if __name__ == "__main__":
             decoder_list,
             GaussianEncoder(new_encoder(M)),
         ).to(device)
-        model.load_state_dict(torch.load(f"{args.experiment_folder}/model.pt", map_location=device))
-        model.eval()
+
+        # fixed pairs of images to evaluate geodesic and euclidean distances on
+        # We will evaluate on the same 10 pairs across all reruns to ensure consistency in our comparisons
+    
+        fixed_pairs = [(0, 1), (10, 20), (50, 60), (100, 110), (5, 15), 
+               (30, 40), (70, 80), (90, 100), (12, 22), (45, 55)]
+        
+        all_geodesic_distances = torch.zeros(len(fixed_pairs), args.num_reruns)
+        all_euclidean_distances = torch.zeros(len(fixed_pairs), args.num_reruns)
+
+        current_script_dir = os.path.dirname(os.path.abspath(__file__))
+        folder_name = f"{args.experiment_folder}_decoders_{args.num_decoders}"
+        base_folder = os.path.join(current_script_dir, folder_name)
+
+        for run_idx in range(args.num_reruns):
+            # Construct the path to the specific run
+            model_path = os.path.join(base_folder, f"run_{run_idx}", "model.pt")
+
+            model.load_state_dict(torch.load(model_path, map_location=device))
+            model.eval()
+
+             # For each run, calculate distance for all 10 fixed pairs
+            for pair_idx, (idx_i, idx_j) in enumerate(fixed_pairs):
+                # Get data for these specific indices
+                img_i = mnist_test_loader.dataset[idx_i][0].to(device).unsqueeze(0)
+                img_j = mnist_test_loader.dataset[idx_j][0].to(device).unsqueeze(0)
+
+                with torch.no_grad():
+                    z_i = model.encoder(img_i).mean.squeeze(0)
+                    z_j = model.encoder(img_j).mean.squeeze(0)
+
+                #calculate Euclidean distance in latent space
+                all_euclidean_distances[pair_idx, run_idx] = torch.norm(z_i - z_j)
+
+                #calculate geodesic distance
+                t = torch.linspace(0, 1, args.num_t).to(device).view(-1, 1)
+                path = (1 - t) * z_i + t * z_j
+                inner_points = path[1:-1].detach().clone().requires_grad_(True)
+                optimizer = torch.optim.Adam([inner_points], lr=1e-2)
+
+                # optimise to minimise curve energy
+                for _ in range(100):
+                    optimizer.zero_grad()
+                    full_path = torch.cat([z_i.unsqueeze(0), inner_points, z_j.unsqueeze(0)], dim=0)
+                    energy = curve_energy(full_path, model.decoders)
+                    energy.backward()
+                    optimizer.step()
+
+                final_path = torch.cat([z_i.unsqueeze(0), inner_points, z_j.unsqueeze(0)], dim=0).detach()
+
+                # monte carlo estimate of geodesic distance using the final path and random decoder samples
+                with torch.no_grad():
+                    dist = torch.tensor(0.0, device=device)
+                    n_samples = 10
+
+                    for i in range(final_path.shape[0] - 1):
+                        z_curr = final_path[i].unsqueeze(0)
+                        z_next = final_path[i+1].unsqueeze(0)
+
+                        segment_dist = 0.0
+
+                        for _ in range(n_samples):
+                            l = torch.randint(0, len(model.decoders), (1,)).item()
+                            k = torch.randint(0, len(model.decoders), (1,)).item()
+
+                            f_l = model.decoders[l](z_curr).mean
+                            f_k = model.decoders[k](z_next).mean
+
+                            segment_dist += torch.norm(f_l - f_k)
+
+                        dist += segment_dist / n_samples
+
+                    all_geodesic_distances[pair_idx, run_idx] = dist
+                
+            print(f"finished run {run_idx}")
+
+        # 4. Final CoV Calculation
+        # For each pair, calculate std/mean across the 10 runs, then average those CoVs
+        geo_cov = (all_geodesic_distances.std(dim=1) / all_geodesic_distances.mean(dim=1)).mean()
+        euc_cov = (all_euclidean_distances.std(dim=1) / all_euclidean_distances.mean(dim=1)).mean()
+        
+        print(f"\nFinal Results for {args.num_decoders} Decoders:")
+        print(f"Average Geodesic CoV: {geo_cov.item():.4f}")
+        print(f"Average Euclidean CoV: {euc_cov.item():.4f}")
+
+
+
+
 
 """
 Nu burde ensemble VAE virke. 
