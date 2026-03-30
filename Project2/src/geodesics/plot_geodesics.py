@@ -8,15 +8,15 @@ from sklearn.decomposition import PCA
 
 from Project2.src.geodesics.compute_geodesics import compute_geodesic_discrete
 
-def plot_latent_geodesics(z_points, labels, decoder, n_pairs=25, is_2d=True):
+def plot_latent_geodesics(z_points, labels, decoders, n_pairs=25, is_2d=True):
     pca = None
     if not is_2d: #Latent space is not 2d
         pca = PCA(n_components=2)
 
-        z_np = z_points.cpu().numpy()
+        z_np = z_points.detach().cpu().numpy()
         z_vis = pca.fit_transform(z_np)
     else:
-        z_vis = z_points.cpu().numpy()
+        z_vis = z_points.detach().cpu().numpy()
 
 
     #Plotting code: made by Gemini
@@ -24,8 +24,9 @@ def plot_latent_geodesics(z_points, labels, decoder, n_pairs=25, is_2d=True):
     
     # We use 'tab10' colormap, which is great for distinct categorical classes (like MNIST digits)
     scatter = plt.scatter(z_vis[:, 0], z_vis[:, 1], c=labels, cmap='tab10', alpha=0.3, s=15, zorder=1)
-    plt.colorbar(scatter, label="Data Classes")
-    
+
+    handles, class_labels = scatter.legend_elements()
+    plt.legend(handles, class_labels, title="Data Classes", loc="best")
     # Select random pairs 
     num_points = z_points.shape[0]
     start_indices = np.random.choice(num_points, n_pairs, replace=False)
@@ -37,7 +38,7 @@ def plot_latent_geodesics(z_points, labels, decoder, n_pairs=25, is_2d=True):
         z_start = z_points[start_indices[i]]
         z_end = z_points[end_indices[i]]
         
-        geo_path = compute_geodesic_discrete(z_start, z_end, decoder) 
+        geo_path = compute_geodesic_discrete(z_start, z_end, decoders) 
         
         # Convert path to numpy
         geo_np = geo_path.cpu().numpy()
@@ -53,9 +54,9 @@ def plot_latent_geodesics(z_points, labels, decoder, n_pairs=25, is_2d=True):
             z_s_vis = z_s_np[0]
             z_e_vis = z_e_np[0]
             
-        # EUCLIDEAN STRAIGHT LINE: til debugging
-        plt.plot([z_s_vis[0], z_e_vis[0]], [z_s_vis[1], z_e_vis[1]], 
-                 color='gray', linestyle='--', alpha=0.6, linewidth=1.5, zorder=2)
+        # euclidean straight line for comparison.
+        # plt.plot([z_s_vis[0], z_e_vis[0]], [z_s_vis[1], z_e_vis[1]], 
+        #          color='gray', linestyle='--', alpha=0.6, linewidth=1.5, zorder=2)
         
         # Plot Riemannian Geodesic curve (black, solid)
         plt.plot(geo_vis[:, 0], geo_vis[:, 1], color='black', linewidth=2.5, zorder=3)
@@ -71,5 +72,3 @@ def plot_latent_geodesics(z_points, labels, decoder, n_pairs=25, is_2d=True):
     plt.tight_layout()
     plt.show()
 
-
-#TODO: Træn modeller, og encode datapoints for at lave plots.
