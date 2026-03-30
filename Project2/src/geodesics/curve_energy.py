@@ -4,6 +4,8 @@ import torch.distributions as td
 
 def curve_energy(curve, decoders):
     """
+    Model average curve energy. Functions as normal curve energy for 1 decoder.
+
     curve: [N, M] tensor of points in latent space
     decoders: nn.ModuleList of decoder models
     """

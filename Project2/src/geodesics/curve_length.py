@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 
 def curve_length(curve: np.ndarray, resolution: int = 100_000) -> np.float16:
     """Implements 4.2 in LMLG.
@@ -25,6 +26,12 @@ def curve_length(curve: np.ndarray, resolution: int = 100_000) -> np.float16:
 
     return length
 
+def curve_length_tensor(curve: torch.Tensor):
+    segment_lengths = torch.norm(curve[1:] - curve[:-1], dim=1)
+
+    length = torch.sum(segment_lengths)
+
+    return length.item()
 
 if __name__ == "__main__":
     c = np.array([
