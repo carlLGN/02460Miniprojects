@@ -2,9 +2,9 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from Project2.src.geodesics.curve_energy import curve_energy
+from Project2.src.geodesics.curve_energy import standard_curve_energy
 
-def compute_geodesic_discrete(z_start, z_end, decoder, n_points=20, epochs=500, lr=0.01):
+def compute_geodesic_discrete(z_start, z_end, decoders, n_points=20, epochs=500, lr=0.01):
     """
     Optimizes a sequence of points in latent space to find the geodesic.
     
@@ -27,7 +27,7 @@ def compute_geodesic_discrete(z_start, z_end, decoder, n_points=20, epochs=500, 
         optimizer.zero_grad()
         
         curve = torch.cat([z_start.unsqueeze(0), interior_points, z_end.unsqueeze(0)], dim=0)
-        energy = curve_energy(curve, decoder)
+        energy = standard_curve_energy(curve, decoders)
 
         energy.backward()
         optimizer.step()

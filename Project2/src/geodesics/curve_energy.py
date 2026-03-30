@@ -27,3 +27,18 @@ def curve_energy(curve, decoders):
         energy += torch.sum((f_l_zi - f_k_znext) ** 2)
         
     return energy
+
+def standard_curve_energy(curve, decoder):
+    """
+    Standard curve energy
+    
+    Parameters:
+    curve: [N, M] tensor of points in latent space
+    decoder: A single PyTorch nn.Module
+    """
+
+    decoder = decoder[0]
+    mu = decoder(curve).mean 
+    energy = torch.sum((mu[:-1] - mu[1:]) ** 2)
+    
+    return energy
