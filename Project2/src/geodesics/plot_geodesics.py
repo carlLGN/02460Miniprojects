@@ -29,6 +29,7 @@ def plot_latent_geodesics(z_points, labels, decoders, n_pairs=25, is_2d=True):
     plt.legend(handles, class_labels, title="Data Classes", loc="best")
     # Select random pairs 
     num_points = z_points.shape[0]
+    np.random.seed(42)
     start_indices = np.random.choice(num_points, n_pairs, replace=False)
     end_indices = np.random.choice(num_points, n_pairs, replace=False)
     
