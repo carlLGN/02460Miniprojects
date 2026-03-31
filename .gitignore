@@ -25,3 +25,6 @@ Project2/outputs/
 
 # data folders
 data/
+
+# project 2 specific
+Project2/src/ensemble/experiments/experiment_*

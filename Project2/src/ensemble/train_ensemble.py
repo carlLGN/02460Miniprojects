@@ -1,3 +1,4 @@
+
 import torch
 import torch.nn as nn
 import os
@@ -136,7 +137,7 @@ if __name__ == "__main__":
     # Define prior distribution
     M = args.latent_dim
 
-    # uv run -m Project2\src\ensemble\train_ensemble.py --mode train --epochs-per-decoder 200 --num-decoders 1,2 ,3, 6, 9
+    # uv run -m Project2.src.ensemble.train_ensemble train --epochs-per-decoder 200 --num-decoders 4 --device cuda
     # re-runs
     # epochs
     # num decoders
@@ -233,12 +234,13 @@ if __name__ == "__main__":
         mean_elbo = torch.tensor(elbos).mean()
         print("Print mean test elbo:", mean_elbo)
 
-    # uv run -m Project2\src\ensemble\train_ensemble.py geodesics
+    # uv run -m Project2.src.ensemble.train_ensemble geodesics
     elif args.mode == "geodesics":
         # 1. Fixed pairs of images to evaluate geodesic and euclidean distances on
         fixed_pairs = [
             (0, 1), (10, 20), (50, 60), (100, 110), (5, 15), 
-            (30, 40), (70, 80), (90, 100), (12, 22), (45, 55)
+            (30, 40), (70, 80), (90, 100), (12, 22), (45, 55),
+            (150, 160), (200, 210), (250, 260), (300, 310), (350, 360)
         ]
 
         # 2. Path to the experiments parent directory
@@ -246,7 +248,6 @@ if __name__ == "__main__":
 
         # Initialize a list to store our results for the CSV
         csv_results = []
-
         # 3. Loop through all experiment subfolders
         for folder_name in sorted(os.listdir(experiments_dir)):
             base_folder = os.path.join(experiments_dir, folder_name)
