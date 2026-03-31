@@ -31,11 +31,11 @@ source /work3/s214624/02460Miniprojects/.venv/bin/activate
 
 cd /work3/s214624/02460Miniprojects
 
-# Run SEB benchmark on ALL tasks
+# Run script
 echo "Running script"
 
 uv run python -m Project1.src.vae.vae train {args}
 
 echo "Job completed"
 
-### to run script do: bsub < {path to bashscript}
+# to run script do: bsub < {path to bashscript}
