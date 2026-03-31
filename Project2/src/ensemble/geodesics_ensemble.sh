@@ -3,7 +3,7 @@
 ### –- specify queue --
 #BSUB -q gpuv100
 ### -- set the job Name --
-#BSUB -J ensemble
+#BSUB -J geodesics
 ### -- ask for number of cores (default: 1) --
 #BSUB -n 4
 ### -- Select the resources: 1 gpu in exclusive process mode --
@@ -15,8 +15,8 @@
 ### request 3GB of system-memory
 #BSUB -R "rusage[mem=2GB]"
 ### -- Specify the output and error file. %J is the job-id --
-#BSUB -o /work3/s214624/02460Miniprojects/bash_outputs/ensemble_%J.out
-#BSUB -e /work3/s214624/02460Miniprojects/bash_outputs/ensemble_%J.err
+#BSUB -o /work3/s214624/02460Miniprojects/bash_outputs/geodesics_%J.out
+#BSUB -e /work3/s214624/02460Miniprojects/bash_outputs/geodesics_%J.err
 # -- end of LSF options --
 
 # Print GPU information
