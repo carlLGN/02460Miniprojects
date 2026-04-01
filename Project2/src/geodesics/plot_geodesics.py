@@ -67,5 +67,6 @@ def plot_latent_geodesics(z_points, labels, decoders, n_pairs=25,fixed_pairs=Non
     plt.ylabel("Latent Dim 2", fontsize=12)
     plt.grid(True, alpha=0.2)
     plt.tight_layout()
+    plt.savefig("./Project2/outputs/geodesics.png", dpi=300, bbox_inches='tight')
     plt.show()
 
