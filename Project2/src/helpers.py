@@ -3,6 +3,15 @@ import torch.nn as nn
 import torch.distributions as td
 import torch.utils.data
 
+FIXED_PAIRS = [
+            (0, 1), (10, 20), (50, 60), (100, 110), (5, 15), 
+            (30, 40), (70, 80), (90, 100), (12, 22), (45, 55),
+            (150, 160), (200, 210), (250, 260), (300, 310), (350, 360),
+            (3,6), (8, 21), (38, 7), (23, 79), (47, 51),
+            (2, 347), (6, 17), (322, 327), (333, 344), (4, 301)
+
+        ]
+
 def subsample(data, targets, num_data, num_classes):
     idx = targets < num_classes
     new_data = data[idx][:num_data].unsqueeze(1).to(torch.float32) / 255

@@ -3,12 +3,11 @@ import torch
 import torch.nn as nn
 import os
 import csv
-from Project2.src.ensemble.ensemble_vae import *
-from Project2.src.ensemble.ensemble_cov import *
+from Project2.src.ensemble.ensemble_vae import EnsembleVAE
+from Project2.src.ensemble.ensemble_cov import compute_ensemble_cov
 
-from Project2.src.geodesics.curve_energy import curve_energy
-from Project2.src.vae import *
-from Project2.src.helpers import *
+from Project2.src.vae import GaussianPrior, GaussianDecoder, GaussianEncoder
+import Project2.src.helpers as help
 from Project2.src.train_vae import train
 
 
@@ -120,10 +119,10 @@ if __name__ == "__main__":
         download=True,
         transform=transforms.Compose([transforms.ToTensor()]),
     )
-    train_data = subsample(
+    train_data = help.subsample(
         train_tensors.data, train_tensors.targets, num_train_data, num_classes
     )
-    test_data = subsample(
+    test_data = help.subsample(
         test_tensors.data, test_tensors.targets, num_train_data, num_classes
     )
 
@@ -160,13 +159,13 @@ if __name__ == "__main__":
 
             # 1. Initialize fresh components for every retraining
             decoder_list = nn.ModuleList([
-                GaussianDecoder(new_decoder(M)) for _ in range(args.num_decoders)
+                GaussianDecoder(help.new_decoder(M)) for _ in range(args.num_decoders)
             ])
 
             model = EnsembleVAE(
                 GaussianPrior(M),
                 decoder_list,
-                GaussianEncoder(new_encoder(M)),
+                GaussianEncoder(help.new_encoder(M)),
             ).to(device)
 
             # 2. Fresh optimizer for the new model
@@ -189,13 +188,13 @@ if __name__ == "__main__":
     elif args.mode == "sample":
 
         decoder_list = nn.ModuleList([
-            GaussianDecoder(new_decoder(M)) for _ in range(args.num_decoders)
+            GaussianDecoder(help.new_decoder(M)) for _ in range(args.num_decoders)
         ])
 
         model = EnsembleVAE(
             GaussianPrior(M),
             decoder_list,
-            GaussianEncoder(new_encoder(M)),
+            GaussianEncoder(help.new_encoder(M)),
         ).to(device)
 
         model.load_state_dict(torch.load(f"{args.experiment_folder}/model.pt", map_location=device))
@@ -213,13 +212,13 @@ if __name__ == "__main__":
 
     elif args.mode == "eval":
         decoder_list = nn.ModuleList([
-            GaussianDecoder(new_decoder(M)) for _ in range(args.num_decoders)
+            GaussianDecoder(help.new_decoder(M)) for _ in range(args.num_decoders)
         ])
 
         model = EnsembleVAE(
             GaussianPrior(M),
             decoder_list,
-            GaussianEncoder(new_encoder(M)),
+            GaussianEncoder(help.new_encoder(M)),
         ).to(device)
 
         model.load_state_dict(torch.load(f"{args.experiment_folder}/model.pt", map_location=device))
@@ -237,11 +236,7 @@ if __name__ == "__main__":
     # uv run -m Project2.src.ensemble.train_ensemble geodesics
     elif args.mode == "geodesics":
         # 1. Fixed pairs of images to evaluate geodesic and euclidean distances on
-        fixed_pairs = [
-            (0, 1), (10, 20), (50, 60), (100, 110), (5, 15), 
-            (30, 40), (70, 80), (90, 100), (12, 22), (45, 55),
-            (150, 160), (200, 210), (250, 260), (300, 310), (350, 360)
-        ]
+        fixed_pairs = help.FIXED_PAIRS
 
         # 2. Path to the experiments parent directory
         experiments_dir = os.path.join(script_dir, "experiments")
@@ -265,13 +260,13 @@ if __name__ == "__main__":
 
                 # 4. Initialize the specific model architecture for this run
                 decoder_list = nn.ModuleList([
-                    GaussianDecoder(new_decoder(M)) for _ in range(num_decoders)
+                    GaussianDecoder(help.new_decoder(M)) for _ in range(num_decoders)
                 ])
 
                 model = EnsembleVAE(
                     GaussianPrior(M),
                     decoder_list,
-                    GaussianEncoder(new_encoder(M)),
+                    GaussianEncoder(help.new_encoder(M)),
                 ).to(device)
 
                 # Temporarily update args so compute_ensemble_cov uses the correct decoder count

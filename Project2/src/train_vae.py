@@ -7,18 +7,13 @@
 # Significant extension by Søren Hauberg, 2024
 
 import torch
-import torch.nn as nn
-import torch.distributions as td
 import torch.utils.data
 from tqdm import tqdm
-from copy import deepcopy
 import os
-import math
-import matplotlib.pyplot as plt
 
 from Project2.src.geodesics.plot_geodesics import plot_latent_geodesics
-from Project2.src.helpers import *
-from Project2.src.vae import *
+import Project2.src.helpers as help
+from Project2.src.vae import GaussianDecoder, GaussianEncoder, GaussianPrior, VAE
 
 
 def train(model, optimizer, data_loader, epochs, device):
@@ -186,10 +181,10 @@ if __name__ == "__main__":
         download=True,
         transform=transforms.Compose([transforms.ToTensor()]),
     )
-    train_data = subsample(
+    train_data = help.subsample(
         train_tensors.data, train_tensors.targets, num_train_data, num_classes
     )
-    test_data = subsample(
+    test_data = help.subsample(
         test_tensors.data, test_tensors.targets, num_train_data, num_classes
     )
 
@@ -210,8 +205,8 @@ if __name__ == "__main__":
         os.makedirs(f"{experiments_folder}", exist_ok=True)
         model = VAE(
             GaussianPrior(M),
-            GaussianDecoder(new_decoder(M)),
-            GaussianEncoder(new_encoder(M)),
+            GaussianDecoder(help.new_decoder(M)),
+            GaussianEncoder(help.new_encoder(M)),
         ).to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
         train(
@@ -231,8 +226,8 @@ if __name__ == "__main__":
     elif args.mode == "sample":
         model = VAE(
             GaussianPrior(M),
-            GaussianDecoder(new_decoder(M)),
-            GaussianEncoder(new_encoder(M)),
+            GaussianDecoder(help.new_decoder(M)),
+            GaussianEncoder(help.new_encoder(M)),
         ).to(device)
         model.load_state_dict(torch.load(args.experiment_folder + f"/{args.name}.pt"))
         model.eval()
@@ -251,8 +246,8 @@ if __name__ == "__main__":
         # Load trained model
         model = VAE(
             GaussianPrior(M),
-            GaussianDecoder(new_decoder(M)),
-            GaussianEncoder(new_encoder(M)),
+            GaussianDecoder(help.new_decoder(M)),
+            GaussianEncoder(help.new_encoder(M)),
         ).to(device)
         model.load_state_dict(torch.load(args.experiment_folder + f"/{args.name}.pt"))
         model.eval()
@@ -268,10 +263,12 @@ if __name__ == "__main__":
 
     elif args.mode == "geodesics":
 
+        fixed_pairs = help.FIXED_PAIRS
+
         model = VAE(
             GaussianPrior(M),
-            GaussianDecoder(new_decoder(M)),
-            GaussianEncoder(new_encoder(M)),
+            GaussianDecoder(help.new_decoder(M)),
+            GaussianEncoder(help.new_encoder(M)),
         ).to(device)
         model.load_state_dict(torch.load(args.experiment_folder + f"/{args.name}.pt"))
         model.eval()
@@ -290,12 +287,10 @@ if __name__ == "__main__":
         z_points = torch.cat(all_z, dim=0)
         labels = torch.cat(all_labels, dim=0).numpy()
 
-        is_2d = (args.latent_dim == 2)
         
         plot_latent_geodesics(
             z_points=z_points, 
             labels=labels, 
             decoders=[model.decoder], 
-            n_pairs=args.num_curves,  
-            is_2d=is_2d
+            n_pairs=args.num_curves
         )
