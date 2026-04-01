@@ -157,6 +157,12 @@ if __name__ == "__main__":
         metavar="N",
         help="number of points along the curve (default: %(default)s)",
     )
+    parser.add_argument(
+        "--use-fixed",
+        type=bool,
+        default=True,
+        help="whether to use the fixed points defined in helpers. Turn to false in combination with varying --num-curves (default: %(default)s)."
+    )
 
     args = parser.parse_args()
     print("# Options")
@@ -262,8 +268,10 @@ if __name__ == "__main__":
         print("Print mean test elbo:", mean_elbo)
 
     elif args.mode == "geodesics":
-
-        fixed_pairs = help.FIXED_PAIRS
+        if args.use_fixed:
+            fixed_pairs = help.FIXED_PAIRS
+        else:
+            fixed_pairs = None
 
         model = VAE(
             GaussianPrior(M),
@@ -292,5 +300,6 @@ if __name__ == "__main__":
             z_points=z_points, 
             labels=labels, 
             decoders=[model.decoder], 
-            n_pairs=args.num_curves
+            n_pairs=args.num_curves,
+            fixed_pairs=fixed_pairs
         )

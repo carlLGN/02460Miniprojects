@@ -9,6 +9,7 @@ from Project2.src.ensemble.ensemble_cov import compute_ensemble_cov
 from Project2.src.vae import GaussianPrior, GaussianDecoder, GaussianEncoder
 import Project2.src.helpers as help
 from Project2.src.train_vae import train
+from Project2.src.geodesics.plot_geodesics import plot_latent_geodesics
 
 
 
@@ -24,7 +25,7 @@ if __name__ == "__main__":
         "mode",
         type=str,
         default="train",
-        choices=["train", "sample", "eval", "geodesics"],
+        choices=["train", "sample", "eval", "geodesics", "plot"],
         help="what to do when running the script (default: %(default)s)",
     )
     parser.add_argument(
@@ -95,6 +96,12 @@ if __name__ == "__main__":
         default=20,
         metavar="N",
         help="number of points along the curve (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--use-fixed",
+        type=bool,
+        default=True,
+        help="whether to use the fixed points defined in helpers. Turn to false in combination with varying --num-curves (default: %(default)s)."
     )
 
     args = parser.parse_args()
@@ -236,7 +243,7 @@ if __name__ == "__main__":
     # uv run -m Project2.src.ensemble.train_ensemble geodesics
     elif args.mode == "geodesics":
         # 1. Fixed pairs of images to evaluate geodesic and euclidean distances on
-        fixed_pairs = help.FIXED_PAIRS
+        fixed_pairs = help.FIXED_PAIRS_SHORT
 
         # 2. Path to the experiments parent directory
         experiments_dir = os.path.join(script_dir, "experiments")
@@ -303,6 +310,49 @@ if __name__ == "__main__":
             print(f"\nSuccessfully saved summary results to {csv_path}")
         else:
             print("\nNo valid experiment folders found to evaluate.")
+
+    elif args.mode =="plot":
+        if args.use_fixed:
+            fixed_pairs = help.FIXED_PAIRS
+        else:
+            fixed_pairs = None
+
+        all_z = []
+        all_labels = []
+
+        decoder_list = nn.ModuleList([
+            GaussianDecoder(help.new_decoder(M)) for _ in range(args.num_decoders)
+            ])
+
+        model = EnsembleVAE(
+            GaussianPrior(M),
+            decoder_list,
+            GaussianEncoder(help.new_encoder(M)),
+            ).to(device)
+
+        model_path = "????" #TODO
+        model.load_state_dict(torch.load(model_path, map_location=device))
+        model.eval()
+
+        with torch.no_grad():
+            for x, y in mnist_test_loader:
+                x = x.to(device)
+
+                z = model.encoder(x).mean 
+                all_z.append(z)
+                all_labels.append(y)
+
+        z_points = torch.cat(all_z, dim=0)
+        labels = torch.cat(all_labels, dim=0).numpy()
+
+        
+        plot_latent_geodesics(
+            z_points=z_points, 
+            labels=labels, 
+            decoders=model.decoders, 
+            n_pairs=args.num_curves,
+            fixed_pairs=fixed_pairs
+        )
 
 
 
