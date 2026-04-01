@@ -27,7 +27,7 @@ def compute_geodesic_discrete(z_start, z_end, decoders, n_points=100, epochs=200
         optimizer.zero_grad()
         
         curve = torch.cat([z_start.unsqueeze(0), interior_points, z_end.unsqueeze(0)], dim=0)
-        if len(decoders > 1):
+        if len(decoders)>1:
             energy = curve_energy(curve, decoders)
         else:
             energy = standard_curve_energy(curve, decoders)
