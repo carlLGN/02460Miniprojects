@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from Project2.src.geodesics.curve_energy import standard_curve_energy
+from Project2.src.geodesics.curve_energy import standard_curve_energy, curve_energy
 
 def compute_geodesic_discrete(z_start, z_end, decoders, n_points=100, epochs=2000, lr=0.001):
     """
@@ -27,7 +27,10 @@ def compute_geodesic_discrete(z_start, z_end, decoders, n_points=100, epochs=200
         optimizer.zero_grad()
         
         curve = torch.cat([z_start.unsqueeze(0), interior_points, z_end.unsqueeze(0)], dim=0)
-        energy = standard_curve_energy(curve, decoders)
+        if len(decoders > 1):
+            energy = curve_energy(curve, decoders)
+        else:
+            energy = standard_curve_energy(curve, decoders)
 
         energy.backward()
         optimizer.step()
