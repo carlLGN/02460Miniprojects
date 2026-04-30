@@ -80,3 +80,7 @@ sampled_graphs = generate_erdos_renyi_baseline(train_dataset, num_samples=1000)
 
 print(f"Successfully generated {len(sampled_graphs)} baseline graphs.")
 print(f"Example shape of the first generated adjacency matrix: {sampled_graphs[0].shape}")
+
+# Add this at the bottom of your generation script
+torch.save(sampled_graphs, 'Project3/models/baseline_graphs.pt')
+print("Saved baseline graphs to 'Project3/models/baseline_graphs.pt'")
