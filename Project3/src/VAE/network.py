@@ -1,11 +1,5 @@
 import torch
-from torch.utils.data import random_split
-from torch_geometric.datasets import TUDataset
-import random
-import networkx as nx
 
-from Project3.src.utils.config import SEED
-from Project3.src.utils.ELBO import ELBO
 from Project3.src.utils.message_parsing import AGGREGATE, UPDATE
 
 class MPNNLayer(torch.nn.Module):   
