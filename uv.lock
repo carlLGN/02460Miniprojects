@@ -1004,11 +1004,19 @@ name = "project3"
 version = "0.1.0"
 source = { virtual = "Project3" }
 dependencies = [
+    { name = "networkx" },
     { name = "numpy" },
+    { name = "torch" },
+    { name = "torch-geometric" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "numpy", specifier = ">=2.4.2" }]
+requires-dist = [
+    { name = "networkx", specifier = ">=3.6.1" },
+    { name = "numpy", specifier = ">=2.4.2" },
+    { name = "torch", specifier = ">=2.10.0" },
+    { name = "torch-geometric", specifier = ">=2.7.0" },
+]
 
 [[package]]
 name = "propcache"
