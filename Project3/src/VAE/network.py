@@ -13,7 +13,6 @@ class MPNNLayer(torch.nn.Module):
         super(MPNNLayer, self).__init__()
 
         self.linear = torch.nn.Linear(in_channels, out_channels)
-        return
 
     def forward(self, x, edge_index):
         message = AGGREGATE(x, edge_index)
@@ -33,7 +32,6 @@ class Encoder(torch.nn.Module):
         self.mu_head = torch.nn.Linear(hidden_channels, latent_dim)
         self.logvar_head = torch.nn.Linear(hidden_channels, latent_dim)
 
-        return
 
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
@@ -52,11 +50,9 @@ class Decoder(torch.nn.Module):
 
         self.feature_reconstruction = torch.nn.Linear(latent_dim, out_channels)
 
-        return
-
     def forward(self, z, edge_index):
         
-        edge_logits = (z[edge_index[0]] * z[edge_index[1]].sum(dim=-1))
+        edge_logits = (z[edge_index[0]] * z[edge_index[1]]).sum(dim=-1)
         x_hat_logits = self.feature_reconstruction(z)
 
         return edge_logits, x_hat_logits
@@ -80,7 +76,7 @@ class GraphVAE(torch.nn.Module):
 
     def forward(self, data):
         mu, logvar = self.encoder(data)
-        z = self.reparametrize(mu, logvar)
+        z = self.reparameterize(mu, logvar)
 
         edge_logits, x_hat = self.decoder(z, data.edge_index)
 
