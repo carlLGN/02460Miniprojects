@@ -76,3 +76,7 @@ class GraphVAE(torch.nn.Module):
 
         return edge_logits, x_hat, mu, logvar
 
+
+
+
+#TODO: node level latents og pooling??
