@@ -10,7 +10,7 @@ def get_random_n(train_dataset):
 @torch.no_grad()
 def sample_graphs(device, model, num_samples=1000, latent_dim=16, threshold=0.5):
     model.eval()
-    generated_graphs = []
+    generated_data_list = []
 
     for _ in range(num_samples):
         n = get_random_n()
@@ -21,7 +21,13 @@ def sample_graphs(device, model, num_samples=1000, latent_dim=16, threshold=0.5)
         adj_matrix = (adj_probs > threshold).float()
         adj_matrix.fill_diagonal_(0)
 
-        G = nx.from_numpy_array(adj_matrix.cpu().numpy())
-        generated_graphs.append(G)
+        _, x_hat_logits = model.decoder(z, edge_index=None)
+        atom_types = torch.argmax(x_hat_logits, dim=1)
 
-    return generated_graphs
+        G = nx.from_numpy_array(adj_matrix.cpu().numpy())
+        
+        for i in range(n):
+            G.nodes[i]['type'] = atom_types[i].item()
+
+        generated_data_list.append(G)
+    return generated_data_list
