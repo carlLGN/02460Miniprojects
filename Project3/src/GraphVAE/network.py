@@ -1,6 +1,7 @@
 import torch
 
-from Project3.src.utils.message_parsing import AGGREGATE, UPDATE
+from Project3.src.utils.message_parsing import SUM_AGGREGATE as AGGREGATE
+from Project3.src.utils.message_parsing import ADD_UPDATE as UPDATE
 
 class MPNNLayer(torch.nn.Module):   
     def __init__(self, in_channels, out_channels):
