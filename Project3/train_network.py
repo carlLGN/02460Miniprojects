@@ -56,8 +56,9 @@ def train(model, loader, optimizer, device):
             edge_index=data.edge_index, 
             num_nodes=data.num_nodes
         )
+        neg_edge_logits, _ = model.decoder(model.reparameterize(mu, logvar), neg_edge_index)
 
-        loss = ELBO(edge_logits, x_hat, data, mu, logvar, neg_edge_index)
+        loss = ELBO(edge_logits,neg_edge_logits, x_hat, data.x, mu, logvar )
 
         loss.backward()
         optimizer.step()
