@@ -9,6 +9,7 @@ from Project3.src.utils.config import SEED
 from Project3.src.utils.ELBO import ELBO
 
 from Project3.src.GraphVAE.network import GraphVAE
+from Project3.src.GraphVAE.sample_network import sample_graphs
 
 def main():
     parser = argparse.ArgumentParser(description='GraphVAE Training on MUTAG')
@@ -41,6 +42,9 @@ def main():
         train_loss = train(model, train_loader, optimizer, device)
         if epoch % 10 == 0:
             print(f'Epoch {epoch:03d} | Loss: {train_loss:.4f}')
+
+    graphs = sample_graphs(device, model, num_samples=1000, latent_dim=args.latent, threshold=0.5)
+    
 
 def train(model, loader, optimizer, device):
     model.train()

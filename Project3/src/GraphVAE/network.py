@@ -81,4 +81,3 @@ class GraphVAE(torch.nn.Module):
 
 
 #TODO: node level latents og pooling??
-#TODO: lav AGGREGATE og UPDATE
