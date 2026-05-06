@@ -44,12 +44,17 @@ class Decoder(torch.nn.Module):
         super(Decoder, self).__init__()
 
         self.feature_reconstruction = torch.nn.Linear(latent_dim, out_channels)
+        self.edge_bias = torch.nn.Parameter(torch.zeros(1))
 
-    def forward(self, z, edge_index):
-        
-        edge_logits = (z[edge_index[0]] * z[edge_index[1]]).sum(dim=-1)
-        x_hat_logits = self.feature_reconstruction(z)
+    def decode_edges(self, z, edge_index):
+        return (z[edge_index[0]] * z[edge_index[1]]).sum(dim=-1) + self.edge_bias
 
+    def decode_features(self, z):
+        return self.feature_reconstruction(z)
+
+    def forward(self, z, edge_index=None):
+        edge_logits = self.decode_edges(z, edge_index) if edge_index is not None else None
+        x_hat_logits = self.decode_features(z)
         return edge_logits, x_hat_logits
     
 
