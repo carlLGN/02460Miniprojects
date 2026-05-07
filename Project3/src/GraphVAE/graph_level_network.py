@@ -71,12 +71,10 @@ class GraphLevelDecoder(nn.Module):
         z_exp = z.unsqueeze(1).expand(-1, max_n, -1)  # (B, max_n, latent)
         h = self.node_mlp(torch.cat([z_exp, pos], dim=-1))  # (B, max_n, hidden)
 
-        # Symmetric pairwise: h_i + h_j is symmetric in (i, j).
         h_i = h.unsqueeze(2)  # (B, max_n, 1, hidden)
         h_j = h.unsqueeze(1)  # (B, 1, max_n, hidden)
         edge_logits = self.edge_mlp(h_i + h_j).squeeze(-1) + self.edge_bias
 
-        # Build per-graph upper-triangular mask
         mask = torch.zeros(B, max_n, max_n, dtype=torch.bool, device=device)
         upper_max = torch.triu(torch.ones(max_n, max_n, dtype=torch.bool, device=device), diagonal=1)
         for i, n in enumerate(n_per_graph.tolist()):

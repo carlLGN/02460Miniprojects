@@ -2,7 +2,6 @@ import argparse
 import torch
 import networkx as nx
 import numpy as np
-from torch.utils.data import random_split
 from torch_geometric.datasets import TUDataset
 from torch_geometric.utils import to_networkx
 
@@ -16,8 +15,7 @@ GEN_PATH = ('Project3/models/generative_graphs.pt' if _args.model == 'node'
 
 device = 'cpu'
 dataset = TUDataset(root='./data/', name='MUTAG').to(device)
-rng = torch.Generator().manual_seed(0)
-train_dataset, validation_dataset, test_dataset = random_split(dataset, (100, 44, 44), generator=rng)
+train_dataset = dataset
 
 try:
     baseline_matrices = torch.load('Project3/models/baseline_graphs.pt', weights_only=False)

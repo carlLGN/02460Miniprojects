@@ -1,12 +1,10 @@
 import os
 import torch
 import argparse
-from torch.utils.data import random_split
 from torch_geometric.datasets import TUDataset
 from torch_geometric.loader import DataLoader
 from torch_geometric.utils import negative_sampling, to_dense_adj
 
-from Project3.src.utils.config import SEED
 from Project3.src.utils.ELBO import ELBO, graph_level_ELBO
 
 from Project3.src.GraphVAE.network import GraphVAE
@@ -42,8 +40,7 @@ def main():
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     dataset = TUDataset(root='./data/', name='MUTAG').to(device)
 
-    rng = torch.Generator().manual_seed(SEED)
-    train_set, val_set, test_set = random_split(dataset, (100, 44, 44), generator=rng)
+    train_set = dataset
 
     train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True)
 
