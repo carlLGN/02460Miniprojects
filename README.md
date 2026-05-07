@@ -49,3 +49,8 @@ uv sync --package project1
 uv run python -m Project1.src.vae.vae          # Train VAE (Part A)
 uv run python -m Project1.src.PartB.DDPM       # Train DDPM (Part B)                   
 uv run python -m Project1.src.PartB.Latent_DDPM  # Train Latent DDPM (Part B)
+
+
+## Project 2:
+
+## Project 3:
