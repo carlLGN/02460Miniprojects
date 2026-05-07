@@ -1,11 +1,3 @@
-"""Graph-level latent VAE for MUTAG.
-
-One latent z_G per graph (vs one per node in the original GraphVAE). The decoder
-generates all edges of an n-node graph jointly, conditioned on z_G plus a
-learned positional embedding for each node, so global structure (connectivity,
-clustering) can be captured in z_G.
-"""
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
